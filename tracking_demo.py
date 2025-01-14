@@ -7,10 +7,17 @@ import supervision as sv
 from cv2.typing import MatLike
 from norfair.tracker import TrackedObject
 
-from processors import Detector, PersonRecognizer, PersonTracker
+from processors import (
+    Detector,
+    GlobalTracker,
+    PersonRecognizer,
+    PersonTracker,
+    embedding_distance,
+)
 from utils import (
     FrameGetter,
     draw_floor_plan,
+    draw_global_floor_plan,
     load_homography,
     prepare_floor_plan,
     preview_frame,
@@ -58,9 +65,10 @@ def main() -> None:
     )
 
     caps = [FrameGetter(video_path, 5) for video_path in video_paths]
-    trks = [PersonTracker() for _ in video_paths]
+    trks = [PersonTracker("euclidean", embedding_distance) for _ in video_paths]
+    global_tracker = GlobalTracker(len(caps), "euclidean", distance_threshold=50)
     homo_mats = [load_homography(path) for path in calibrated_paths]
-    projections: dict[int, list[int, np.ndarray]] = {}
+    projections: dict[int, tuple[TrackedObject, list[int, np.ndarray]]] = {}
 
     # Model
     det = Detector()
@@ -83,7 +91,7 @@ def main() -> None:
                 ]
                 reids = [rec.infer(mat) for mat in obj_mats]
                 tracked = trks[cid].update(detections, reids)
-                projections[cid] = project_points(tracked, homo_mats[cid])
+                projections[cid] = (tracked, project_points(tracked, homo_mats[cid]))
                 last_frames[cid] = preview_frame(
                     annotate(frame, detections, tracked), 0.4
                 )
@@ -91,9 +99,9 @@ def main() -> None:
         for cid, frame in last_frames.items():
             if frame is None:
                 break
-            fp_frame = preview_frame(
+            all_projected = preview_frame(
                 draw_floor_plan(scaled_floor_plan, projections, transform_matrix),
-                0.7,
+                0.4,
             )
             if paused:
                 cv2.putText(
@@ -106,6 +114,27 @@ def main() -> None:
                     2,
                 )
                 cv2.putText(
+                    all_projected,
+                    "Paused",
+                    (10, all_projected.shape[0] - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1,
+                    (0, 0, 255),
+                    2,
+                )
+            cv2.imshow(f"{MAIN_WINDOW_NAME}_{cid}", frame)
+            cv2.imshow("all_projected", all_projected)
+
+        for cid, (t_obj, projected_points) in projections.items():
+            global_tracked = global_tracker.update(t_obj, projected_points)
+
+        if global_tracked:
+            fp_frame = preview_frame(
+                draw_global_floor_plan(scaled_floor_plan, global_tracked, transform_matrix),
+                0.4,
+            )
+            if paused:
+                cv2.putText(
                     fp_frame,
                     "Paused",
                     (10, fp_frame.shape[0] - 10),
@@ -114,7 +143,6 @@ def main() -> None:
                     (0, 0, 255),
                     2,
                 )
-            cv2.imshow(f"{MAIN_WINDOW_NAME}_{cid}", frame)
             cv2.imshow("floor_plan", fp_frame)
 
         key_press = cv2.waitKey(1) & 0xFF

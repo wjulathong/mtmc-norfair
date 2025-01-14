@@ -6,6 +6,7 @@ import norfair
 import numpy as np
 from cv2.typing import MatLike
 from norfair.tracker import TrackedObject
+from norfair.drawing.path import Paths
 
 # import enum
 # import time
@@ -78,16 +79,6 @@ def project_points(
     projected_points = homography @ homogeneous_points.T
     projected_points /= projected_points[2]
     return list(zip(ids, projected_points.T))
-    # projected_points: list[tuple[int, np.ndarray]] = []
-    # for obj in tracked:
-    #     if obj.last_detection is None:
-    #         continue
-    #     x, y = obj.last_detection.points[0]
-    #     point = np.array([[x, y, 1]], dtype=np.float32).T
-    #     projected_point = np.dot(homography, point)
-    #     projected_point /= projected_point[2]
-    #     projected_points.append((obj.id, projected_point))
-    # return projected_points
 
 
 def prepare_floor_plan(floor_plan: MatLike, scale: float) -> tuple[MatLike, np.ndarray]:
@@ -113,14 +104,13 @@ def prepare_floor_plan(floor_plan: MatLike, scale: float) -> tuple[MatLike, np.n
 
 def draw_floor_plan(
     floor_plan: MatLike,
-    projections: dict[int, list[tuple[int, np.ndarray]]],
+    projections: dict[int, tuple[TrackedObject, list[tuple[int, np.ndarray]]]],
     transform_matrix: np.ndarray,
 ) -> MatLike:
     viz = floor_plan.copy()
-    for cid, projected_points in projections.items():
+    for cid, (_, projected_points) in projections.items():
         for id, point in projected_points:
-            x, y = point[:2].flatten().astype(np.int32)
-            transformed_point = np.array([[x], [y], [1]])
+            transformed_point = point.astype(np.int32).reshape(-1, 1)
             new_point = transform_matrix @ transformed_point
             new_x, new_y = int(new_point[0][0]), int(new_point[1][0])
             color = norfair.Palette.choose_color(id)
@@ -153,6 +143,89 @@ def draw_floor_plan(
                 font_thickness,
             )
     return viz
+
+
+def draw_global_floor_plan(
+    floor_plan: MatLike,
+    global_tracked: TrackedObject,
+    transform_matrix: np.ndarray,
+) -> MatLike:
+    viz = floor_plan.copy()
+
+    drawer = Paths()
+    viz = drawer.draw(viz, global_tracked)
+
+    # for t_obj in global_tracked:
+    #     point = np.append(t_obj.last_detection.points[0], 1)
+    #     transformed_point = point.astype(np.int32).reshape(-1, 1)
+    #     new_point = transform_matrix @ transformed_point
+    #     new_x, new_y = int(new_point[0][0]), int(new_point[1][0])
+    #     color = norfair.Palette.choose_color(t_obj.id)
+    #     cv2.circle(viz, (new_x, new_y), radius=5, color=color, thickness=-1)
+    #     label = f"{t_obj.id}"
+    #     font = cv2.FONT_HERSHEY_SIMPLEX
+    #     font_scale = 1
+    #     font_thickness = 2
+    #     (text_width, text_height), _ = cv2.getTextSize(
+    #         label, font, font_scale, font_thickness
+    #     )
+    #     text_x = new_x - text_width // 2
+    #     text_y = new_y - 10
+    #     cv2.putText(
+    #         viz,
+    #         label,
+    #         (text_x, text_y),
+    #         font,
+    #         font_scale,
+    #         (0, 0, 0),
+    #         font_thickness + 1,
+    #     )
+    #     cv2.putText(
+    #         viz,
+    #         label,
+    #         (text_x, text_y),
+    #         font,
+    #         font_scale,
+    #         color,
+    #         font_thickness,
+    #     )
+    return viz
+
+    # for cid, (_, projected_points) in projections.items():
+    #     for id, point in projected_points:
+    #         transformed_point = point.astype(np.int32).reshape(-1, 1)
+    #         new_point = transform_matrix @ transformed_point
+    #         new_x, new_y = int(new_point[0][0]), int(new_point[1][0])
+    #         color = norfair.Palette.choose_color(id)
+    #         cv2.circle(viz, (new_x, new_y), radius=5, color=color, thickness=-1)
+    #         label = f"{cid} {id}"
+    #         font = cv2.FONT_HERSHEY_SIMPLEX
+    #         font_scale = 1
+    #         font_thickness = 2
+    #         (text_width, text_height), _ = cv2.getTextSize(
+    #             label, font, font_scale, font_thickness
+    #         )
+    #         text_x = new_x - text_width // 2
+    #         text_y = new_y - 10
+    #         cv2.putText(
+    #             viz,
+    #             label,
+    #             (text_x, text_y),
+    #             font,
+    #             font_scale,
+    #             (0, 0, 0),
+    #             font_thickness + 1,
+    #         )
+    #         cv2.putText(
+    #             viz,
+    #             label,
+    #             (text_x, text_y),
+    #             font,
+    #             font_scale,
+    #             color,
+    #             font_thickness,
+    #         )
+    # return viz
 
 
 # class SeekEvent(enum.Enum):
