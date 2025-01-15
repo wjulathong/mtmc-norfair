@@ -1,6 +1,6 @@
+import time
 from pathlib import Path
 from typing import Callable
-import time
 
 import cv2
 import numpy as np
@@ -12,10 +12,17 @@ from norfair.tracker import TrackedObject
 from scipy.spatial.distance import cosine
 from ultralytics import YOLO
 
+YOLO_MODEL_PATH = Path("./models/yolo11s.pt")
+REID_MODEL_NAME = "person-reidentification-retail-0288"
+REID_MODEL_SIZE = "FP16"
+REID_MODEL_PATH = Path(
+    f"./models/intel/{REID_MODEL_NAME}/{REID_MODEL_SIZE}/{REID_MODEL_NAME}.xml"
+)
+
 
 class Detector:
     def __init__(self) -> None:
-        self.model_path = Path("./models/yolo11s.pt")
+        self.model_path = YOLO_MODEL_PATH
         self.model = YOLO(self.model_path)
 
     def detect(self, frame: MatLike) -> sv.Detections:
@@ -28,11 +35,7 @@ class Detector:
 class PersonRecognizer:
     def __init__(self) -> None:
         self.core = ov.Core()
-        self.model = self.core.read_model(
-            Path(
-                "./models/intel/person-reidentification-retail-0288/FP16/person-reidentification-retail-0288.xml"
-            )
-        )
+        self.model = self.core.read_model(REID_MODEL_PATH)
         self.model.reshape([1, 3, 256, 128])
         self.layout = ov.Layout("NCHW")
         self.compiled_model = self.core.compile_model(self.model)
@@ -84,6 +87,36 @@ def embedding_distance(
             distance = cosine(snd_emb, fst_emb)
             min_distance = min(min_distance, distance)
     return min_distance
+
+
+def mean_embedding_distance(
+    matched_not_init_trackers: TrackedObject, unmatched_trackers: TrackedObject
+):
+    snd_embeddings = []
+    if unmatched_trackers.last_detection.embedding is not None:
+        snd_embeddings.append(
+            np.array(unmatched_trackers.last_detection.embedding).reshape(256)
+        )
+    for detection in unmatched_trackers.past_detections:
+        if detection.embedding is not None:
+            snd_embeddings.append(np.array(detection.embedding).reshape(256))
+
+    if not snd_embeddings:
+        return 2.0
+
+    snd_embedding = np.mean(snd_embeddings, axis=0)
+
+    fst_embeddings = []
+    for detection_fst in matched_not_init_trackers.past_detections:
+        if detection_fst.embedding is not None:
+            fst_embeddings.append(np.array(detection_fst.embedding).reshape(256))
+
+    if not fst_embeddings:
+        return 2.0
+
+    fst_embedding = np.mean(fst_embeddings, axis=0)
+
+    return cosine(snd_embedding, fst_embedding)
 
 
 def embedding_distance_old(
@@ -154,7 +187,8 @@ class GlobalTracker:
         self,
         total_tracker: int,
         distance_function: str | Callable[[Detection, TrackedObject], float],
-        reid_distance_function: Callable[["TrackedObject", "TrackedObject"], float] | None = None,
+        reid_distance_function: Callable[["TrackedObject", "TrackedObject"], float]
+        | None = None,
         hit_counter_max: int = 10,
         distance_threshold: float = 50.0,
         reid_hit_counter_max: int = 300,
@@ -166,7 +200,9 @@ class GlobalTracker:
         self.tracker = Tracker(
             filter_factory=OptimizedKalmanFilterFactory(),
             distance_function=distance_function,
-            reid_distance_function=self._embedding_distance,
+            reid_distance_function=reid_distance_function
+            if reid_distance_function is not None
+            else self._embedding_distance,
             hit_counter_max=total_tracker * hit_counter_max,
             distance_threshold=distance_threshold,
             reid_hit_counter_max=total_tracker * reid_hit_counter_max,
@@ -195,31 +231,4 @@ class GlobalTracker:
         unmatched_trackers: TrackedObject,
     ):
         print(f"{time.time():.2f} Called REID")
-        snd_embeddings = []
-
-        if unmatched_trackers.last_detection.embedding is not None:
-            snd_embeddings.append(
-                np.array(unmatched_trackers.last_detection.embedding).reshape(256)
-            )
-
-        for detection in unmatched_trackers.past_detections:
-            if detection.embedding is not None:
-                snd_embeddings.append(np.array(detection.embedding).reshape(256))
-
-        if not snd_embeddings:
-            return 2.0
-
-        fst_embeddings = []
-        for detection_fst in matched_not_init_trackers.past_detections:
-            if detection_fst.embedding is not None:
-                fst_embeddings.append(np.array(detection_fst.embedding).reshape(256))
-
-        if not fst_embeddings:
-            return 2.0
-
-        min_distance = 2.0
-        for snd_emb in snd_embeddings:
-            for fst_emb in fst_embeddings:
-                distance = cosine(snd_emb, fst_emb)
-                min_distance = min(min_distance, distance)
-        return min_distance
+        return mean_embedding_distance(matched_not_init_trackers, unmatched_trackers)
