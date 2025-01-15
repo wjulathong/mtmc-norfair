@@ -21,14 +21,21 @@ REID_MODEL_PATH = Path(
 
 
 class Detector:
-    def __init__(self) -> None:
+    def __init__(self, edge_margin: int = 20) -> None:
         self.model_path = YOLO_MODEL_PATH
         self.model = YOLO(self.model_path)
+        self.edge_margin = edge_margin
 
     def detect(self, frame: MatLike) -> sv.Detections:
         results = self.model.predict(source=frame, conf=0.6, verbose=False)[0]
         detections = sv.Detections.from_ultralytics(results)
         detections = detections[detections["class_name"] == "person"]
+        detections = detections[
+            (detections.xyxy[:, 0] >= self.edge_margin)
+            & (detections.xyxy[:, 1] >= self.edge_margin)
+            & (detections.xyxy[:, 2] <= frame.shape[1] - self.edge_margin)
+            & (detections.xyxy[:, 3] <= frame.shape[0] - self.edge_margin)
+        ]
         return detections
 
 
