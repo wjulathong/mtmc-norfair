@@ -132,8 +132,9 @@ def main() -> None:
             cv2.imshow(f"{MAIN_WINDOW_NAME}_{cid}", frame)
             cv2.imshow("all_projected", all_projected)
 
-        for cid, (t_obj, projected_points) in projections.items():
-            global_tracked = global_tracker.update(t_obj, projected_points)
+        if not paused or manual:
+            for cid, (t_obj, projected_points) in projections.items():
+                global_tracked = global_tracker.update(t_obj, projected_points)
 
         if global_tracked:
             fp_frame = preview_frame(floor_plan_drawer.draw(global_tracked), 0.4)
