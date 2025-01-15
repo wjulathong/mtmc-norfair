@@ -49,10 +49,12 @@ def main() -> None:
 
     video_paths = [
         Path("../mdx/Building_K_Cam1.mp4"),
+        Path("../mdx/Building_K_Cam6.mp4"),
         Path("../mdx/Building_K_Cam7.mp4"),
     ]
     calibrated_paths = [
         Path("./calibrated/Cam1.json"),
+        Path("./calibrated/Cam6.json"),
         Path("./calibrated/Cam7.json"),
     ]
     for path in video_paths:
@@ -76,7 +78,7 @@ def main() -> None:
 
     # Visualizer
     floor_plan_drawer = FloorPlanDrawer(
-        scaled_floor_plan, transform_matrix=transform_matrix
+        scaled_floor_plan, history_length=50, transform_matrix=transform_matrix
     )
 
     manual = False
