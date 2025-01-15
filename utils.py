@@ -1,12 +1,12 @@
 import json
+from collections import deque
 from pathlib import Path
 
 import cv2
-import norfair
 import numpy as np
 from cv2.typing import MatLike
+from norfair import Palette
 from norfair.tracker import TrackedObject
-from norfair.drawing.path import Paths
 
 # import enum
 # import time
@@ -109,7 +109,7 @@ def draw_floor_plan(
             transformed_point = point.astype(np.int32).reshape(-1, 1)
             new_point = transform_matrix @ transformed_point
             new_x, new_y = int(new_point[0][0]), int(new_point[1][0])
-            color = norfair.Palette.choose_color(id)
+            color = Palette.choose_color(id)
             cv2.circle(viz, (new_x, new_y), radius=5, color=color, thickness=-1)
             label = f"{cid} {id}"
             font = cv2.FONT_HERSHEY_SIMPLEX
@@ -141,87 +141,84 @@ def draw_floor_plan(
     return viz
 
 
-def draw_global_floor_plan(
-    floor_plan: MatLike,
-    global_tracked: TrackedObject,
-    transform_matrix: np.ndarray,
-) -> MatLike:
-    viz = floor_plan.copy()
+class FloorPlanDrawer:
+    def __init__(
+        self,
+        floor_plan: MatLike,
+        history_length: int = 10,
+        transform_matrix: np.ndarray | None = None,
+    ) -> None:
+        self.viz = floor_plan.copy()
+        self.history_length = history_length
+        self.transform_matrix = transform_matrix
 
-    drawer = Paths()
-    viz = drawer.draw(viz, global_tracked)
+        self.history: dict[int, list[np.ndarray]] = {}
 
-    # for t_obj in global_tracked:
-    #     point = np.append(t_obj.last_detection.points[0], 1)
-    #     transformed_point = point.astype(np.int32).reshape(-1, 1)
-    #     new_point = transform_matrix @ transformed_point
-    #     new_x, new_y = int(new_point[0][0]), int(new_point[1][0])
-    #     color = norfair.Palette.choose_color(t_obj.id)
-    #     cv2.circle(viz, (new_x, new_y), radius=5, color=color, thickness=-1)
-    #     label = f"{t_obj.id}"
-    #     font = cv2.FONT_HERSHEY_SIMPLEX
-    #     font_scale = 1
-    #     font_thickness = 2
-    #     (text_width, text_height), _ = cv2.getTextSize(
-    #         label, font, font_scale, font_thickness
-    #     )
-    #     text_x = new_x - text_width // 2
-    #     text_y = new_y - 10
-    #     cv2.putText(
-    #         viz,
-    #         label,
-    #         (text_x, text_y),
-    #         font,
-    #         font_scale,
-    #         (0, 0, 0),
-    #         font_thickness + 1,
-    #     )
-    #     cv2.putText(
-    #         viz,
-    #         label,
-    #         (text_x, text_y),
-    #         font,
-    #         font_scale,
-    #         color,
-    #         font_thickness,
-    #     )
-    return viz
+    def draw(self, tracked_objects: list[TrackedObject]) -> MatLike:
+        viz = self.viz.copy()
 
-    # for cid, (_, projected_points) in projections.items():
-    #     for id, point in projected_points:
-    #         transformed_point = point.astype(np.int32).reshape(-1, 1)
-    #         new_point = transform_matrix @ transformed_point
-    #         new_x, new_y = int(new_point[0][0]), int(new_point[1][0])
-    #         color = norfair.Palette.choose_color(id)
-    #         cv2.circle(viz, (new_x, new_y), radius=5, color=color, thickness=-1)
-    #         label = f"{cid} {id}"
-    #         font = cv2.FONT_HERSHEY_SIMPLEX
-    #         font_scale = 1
-    #         font_thickness = 2
-    #         (text_width, text_height), _ = cv2.getTextSize(
-    #             label, font, font_scale, font_thickness
-    #         )
-    #         text_x = new_x - text_width // 2
-    #         text_y = new_y - 10
-    #         cv2.putText(
-    #             viz,
-    #             label,
-    #             (text_x, text_y),
-    #             font,
-    #             font_scale,
-    #             (0, 0, 0),
-    #             font_thickness + 1,
-    #         )
-    #         cv2.putText(
-    #             viz,
-    #             label,
-    #             (text_x, text_y),
-    #             font,
-    #             font_scale,
-    #             color,
-    #             font_thickness,
-    #         )
-    # return viz
+        for obj in tracked_objects:
+            color = Palette.choose_color(obj.id)
+
+            point = np.mean(np.array(obj.estimate), axis=0)
+            if self.transform_matrix is not None:
+                point = (
+                    (self.transform_matrix @ np.hstack((point, 1)).reshape(-1, 1))
+                    .flatten()
+                    .astype(int)
+                )
+
+            self.history.setdefault(
+                obj.id,
+                deque(maxlen=self.history_length),
+            ).append(point)
+
+            for i in range(1, len(self.history[obj.id])):
+                cv2.line(
+                    viz,
+                    tuple(self.history[obj.id][i - 1]),
+                    tuple(self.history[obj.id][i]),
+                    color=color,
+                    thickness=2,
+                )
+
+            cv2.circle(
+                viz,
+                tuple(point),
+                radius=5,
+                color=color,
+                thickness=-1,
+            )
+
+            label = f"{obj.id}"
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 1
+            font_thickness = 2
+            (text_width, text_height), _ = cv2.getTextSize(
+                label, font, font_scale, font_thickness
+            )
+            text_x = point[0] - text_width // 2
+            text_y = point[1] - 10
+            cv2.putText(
+                viz,
+                label,
+                (text_x, text_y),
+                font,
+                font_scale,
+                (0, 0, 0),
+                font_thickness + 1,
+            )
+            cv2.putText(
+                viz,
+                label,
+                (text_x, text_y),
+                font,
+                font_scale,
+                color,
+                font_thickness,
+            )
+
+        return viz
 
 
 # class SeekEvent(enum.Enum):

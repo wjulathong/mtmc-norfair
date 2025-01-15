@@ -15,9 +15,9 @@ from processors import (
     embedding_distance,
 )
 from utils import (
+    FloorPlanDrawer,
     FrameGetter,
     draw_floor_plan,
-    draw_global_floor_plan,
     load_homography,
     prepare_floor_plan,
     preview_frame,
@@ -74,6 +74,11 @@ def main() -> None:
     det = Detector()
     rec = PersonRecognizer()
 
+    # Visualizer
+    floor_plan_drawer = FloorPlanDrawer(
+        scaled_floor_plan, transform_matrix=transform_matrix
+    )
+
     manual = False
     paused = False
     last_frames: dict[int, MatLike | None] = {}
@@ -129,10 +134,7 @@ def main() -> None:
             global_tracked = global_tracker.update(t_obj, projected_points)
 
         if global_tracked:
-            fp_frame = preview_frame(
-                draw_global_floor_plan(scaled_floor_plan, global_tracked, transform_matrix),
-                0.4,
-            )
+            fp_frame = preview_frame(floor_plan_drawer.draw(global_tracked), 0.4)
             if paused:
                 cv2.putText(
                     fp_frame,
@@ -143,7 +145,7 @@ def main() -> None:
                     (0, 0, 255),
                     2,
                 )
-            cv2.imshow("floor_plan", fp_frame)
+            cv2.imshow("global_map", fp_frame)
 
         key_press = cv2.waitKey(1) & 0xFF
         if key_press == ord("p"):
