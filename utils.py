@@ -65,15 +65,11 @@ def load_homography(calibration_path: Path) -> np.ndarray:
 def project_points(
     tracked: list[TrackedObject], homography: np.ndarray
 ) -> list[tuple[int, np.ndarray]]:
-    valid_objects = [
-        (obj.id, obj.last_detection.points[0])
-        for obj in tracked
-        if obj.last_detection is not None
-    ]
-    if not valid_objects:
+    objects = [(obj.id, np.mean(np.array(obj.estimate), axis=0)) for obj in tracked]
+    if not objects:
         return []
 
-    ids, points = zip(*valid_objects)
+    ids, points = zip(*objects)
     points_array = np.array(points, dtype=np.float32)
     homogeneous_points = np.column_stack([points_array, np.ones(len(points_array))])
     projected_points = homography @ homogeneous_points.T
