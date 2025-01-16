@@ -1,46 +1,24 @@
 from pathlib import Path
 
 import cv2
-import norfair
 import numpy as np
-import supervision as sv
 from cv2.typing import MatLike
 from norfair.tracker import TrackedObject
+from supervision import crop_image
 
-from processors import (
-    Detector,
-    GlobalTracker,
-    PersonRecognizer,
-    PersonTracker,
-)
-from utils import (
-    FPS,
-    FloorPlanDrawer,
-    FrameGetter,
-    draw_floor_plan,
-    load_homography,
-    prepare_floor_plan,
-    preview_frame,
-    project_points,
-)
+from utils.drawing import FloorPlanDrawer, annotate, draw_floor_plan, preview_frame
+from utils.inference import Detector, GlobalTracker, PersonRecognizer, PersonTracker
+from utils.transform import load_homography, prepare_floor_plan, project_points
+from utils.video import FPS, FrameGetter
 
 MAIN_WINDOW_NAME = "Camera"
 
-BBOX_ANN = sv.BoxAnnotator(thickness=3)
-LABEL_ANN = sv.LabelAnnotator()
-
-
-def annotate(frame: MatLike, detections: sv.Detections, tracked: list[TrackedObject]):
-    labels = [
-        f"{cname} {conf:.2f}"
-        for cname, conf in zip(detections["class_name"], detections.confidence)
-    ]
-    annot_frame = BBOX_ANN.annotate(scene=frame.copy(), detections=detections)
-    annot_frame = LABEL_ANN.annotate(
-        scene=annot_frame, detections=detections, labels=labels
-    )
-    norfair.draw_points(annot_frame, tracked, radius=8, text_size=1)
-    return annot_frame
+YOLO_MODEL_PATH = Path("./models/yolo11s.pt")
+REID_MODEL_NAME = "person-reidentification-retail-0288"
+REID_MODEL_SIZE = "FP16"
+REID_MODEL_PATH = Path(
+    f"./models/intel/{REID_MODEL_NAME}/{REID_MODEL_SIZE}/{REID_MODEL_NAME}.xml"
+)
 
 
 def main() -> None:
@@ -67,8 +45,8 @@ def main() -> None:
     )
 
     # Model
-    det = Detector()
-    rec = PersonRecognizer()
+    det = Detector(YOLO_MODEL_PATH)
+    rec = PersonRecognizer(REID_MODEL_PATH)
 
     caps = [FrameGetter(video_path, 5) for video_path in video_paths]
     trks = [PersonTracker("euclidean", rec) for _ in video_paths]
@@ -96,7 +74,7 @@ def main() -> None:
             for cid, frame in frames:
                 detections = det.detect(frame)
                 obj_mats: list[MatLike] = [
-                    sv.crop_image(image=frame, xyxy=xyxy) for xyxy in detections.xyxy
+                    crop_image(frame, xyxy) for xyxy in detections.xyxy
                 ]
                 tracked = trks[cid].update(detections, obj_mats)
                 projections[cid] = (tracked, project_points(tracked, homo_mats[cid]))

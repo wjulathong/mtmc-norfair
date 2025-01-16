@@ -13,18 +13,10 @@ from norfair.tracker import TrackedObject
 from scipy.spatial.distance import cdist
 from ultralytics import YOLO
 
-YOLO_MODEL_PATH = Path("./models/yolo11s.pt")
-REID_MODEL_NAME = "person-reidentification-retail-0288"
-REID_MODEL_SIZE = "FP16"
-REID_MODEL_PATH = Path(
-    f"./models/intel/{REID_MODEL_NAME}/{REID_MODEL_SIZE}/{REID_MODEL_NAME}.xml"
-)
-
 
 class Detector:
-    def __init__(self, edge_margin: int = 20) -> None:
-        self.model_path = YOLO_MODEL_PATH
-        self.model = YOLO(self.model_path)
+    def __init__(self, model_path: Path, edge_margin: int = 20) -> None:
+        self.model = YOLO(model_path)
         self.edge_margin = edge_margin
 
     def detect(self, frame: MatLike) -> sv.Detections:
@@ -41,9 +33,9 @@ class Detector:
 
 
 class PersonRecognizer:
-    def __init__(self) -> None:
+    def __init__(self, model_path: Path) -> None:
         self.core = ov.Core()
-        self.model = self.core.read_model(REID_MODEL_PATH)
+        self.model = self.core.read_model(model_path)
         self.model.reshape([1, 3, 256, 128])
         self.layout = ov.Layout("NCHW")
         self.compiled_model = self.core.compile_model(self.model)
