@@ -1,4 +1,5 @@
 import time
+from functools import partial
 from pathlib import Path
 from typing import Callable
 
@@ -153,11 +154,32 @@ def embedding_distance_old(
     return 2.0
 
 
+def infer_embeddings(
+    reid_model: PersonRecognizer,
+    matched_not_init_trackers: TrackedObject,
+    unmatched_trackers: TrackedObject,
+):
+    for last_detection in (
+        matched_not_init_trackers.last_detection,
+        unmatched_trackers.last_detection,
+    ):
+        if last_detection.embedding is None:
+            last_detection.embedding = reid_model.infer(last_detection.data["cropped"])
+    for detection in matched_not_init_trackers.past_detections:
+        if detection.embedding is None:
+            detection.embedding = reid_model.infer(detection.data["cropped"])
+    for detection in unmatched_trackers.past_detections:
+        if detection.embedding is None:
+            detection.embedding = reid_model.infer(detection.data["cropped"])
+
+
 class PersonTracker:
     def __init__(
         self,
         distance_function: str | Callable[[Detection, TrackedObject], float],
-        reid_distance_function: Callable[["TrackedObject", "TrackedObject"], float],
+        reid_model: PersonRecognizer,
+        reid_distance_function: Callable[[TrackedObject, TrackedObject], float]
+        | None = None,
         hit_counter_max: int = 10,
         distance_threshold: float = 50.0,
         reid_hit_counter_max: int = 300,
@@ -170,23 +192,41 @@ class PersonTracker:
             distance_function=distance_function,
             hit_counter_max=hit_counter_max,
             distance_threshold=distance_threshold,
-            reid_distance_function=reid_distance_function,
+            reid_distance_function=reid_distance_function
+            if reid_distance_function is not None
+            else partial(self._embedding_distance, reid_model),
             reid_distance_threshold=reid_distance_threshold,
             reid_hit_counter_max=reid_hit_counter_max,
             past_detections_length=past_detections_length,
             initialization_delay=initialization_delay,
         )
 
-    def update(self, detections: sv.Detections, reids: list[np.ndarray]):
+    def update(
+        self,
+        detections: sv.Detections,
+        cropped_objects: list[MatLike],
+    ):
         nf_detections = [
             Detection(
                 points=np.array([(xyxy[0] + xyxy[2]) / 2, xyxy[3]]),
                 scores=np.array([conf]),
-                embedding=emb,
+                data={"cropped": mat},
             )
-            for xyxy, conf, emb in zip(detections.xyxy, detections.confidence, reids)
+            for xyxy, conf, mat in zip(
+                detections.xyxy, detections.confidence, cropped_objects
+            )
         ]
         return self.tracker.update(nf_detections)
+
+    def _embedding_distance(
+        self,
+        reid_model: PersonRecognizer,
+        matched_not_init_trackers: TrackedObject,
+        unmatched_trackers: TrackedObject,
+    ):
+        # print(f"[{time.time():.2f}] PersonTracker: Called REID")
+        infer_embeddings(reid_model, matched_not_init_trackers, unmatched_trackers)
+        return mean_embedding_distance(matched_not_init_trackers, unmatched_trackers)
 
 
 class GlobalTracker:
@@ -194,7 +234,8 @@ class GlobalTracker:
         self,
         total_tracker: int,
         distance_function: str | Callable[[Detection, TrackedObject], float],
-        reid_distance_function: Callable[["TrackedObject", "TrackedObject"], float]
+        reid_model: PersonRecognizer,
+        reid_distance_function: Callable[[TrackedObject, TrackedObject], float]
         | None = None,
         hit_counter_max: int = 10,
         distance_threshold: float = 50.0,
@@ -209,7 +250,7 @@ class GlobalTracker:
             distance_function=distance_function,
             reid_distance_function=reid_distance_function
             if reid_distance_function is not None
-            else self._embedding_distance,
+            else partial(self._embedding_distance, reid_model),
             hit_counter_max=total_tracker * hit_counter_max,
             distance_threshold=distance_threshold,
             reid_hit_counter_max=total_tracker * reid_hit_counter_max,
@@ -227,15 +268,17 @@ class GlobalTracker:
                 Detection(
                     points=point[:2].reshape(1, -1),
                     scores=t_obj.last_detection.scores,
-                    embedding=t_obj.last_detection.embedding,
+                    data=t_obj.last_detection.data,
                 )
             )
         return self.tracker.update(nf_detections, self.total_tracker)
 
     def _embedding_distance(
         self,
+        reid_model: PersonRecognizer,
         matched_not_init_trackers: TrackedObject,
         unmatched_trackers: TrackedObject,
     ):
-        print(f"{time.time():.2f} Called REID")
+        print(f"[{time.time():.2f}] GlobalTracker: Called REID")
+        infer_embeddings(reid_model, matched_not_init_trackers, unmatched_trackers)
         return mean_embedding_distance(matched_not_init_trackers, unmatched_trackers)

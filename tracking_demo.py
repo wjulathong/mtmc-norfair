@@ -12,7 +12,6 @@ from processors import (
     GlobalTracker,
     PersonRecognizer,
     PersonTracker,
-    embedding_distance,
 )
 from utils import (
     FloorPlanDrawer,
@@ -66,15 +65,16 @@ def main() -> None:
         f", {len(video_paths)} cameras != {len(calibrated_paths)} calibrations"
     )
 
-    caps = [FrameGetter(video_path, 5) for video_path in video_paths]
-    trks = [PersonTracker("euclidean", embedding_distance) for _ in video_paths]
-    global_tracker = GlobalTracker(len(caps), "euclidean", distance_threshold=50)
-    homo_mats = [load_homography(path) for path in calibrated_paths]
-    projections: dict[int, tuple[TrackedObject, list[int, np.ndarray]]] = {}
-
     # Model
     det = Detector()
     rec = PersonRecognizer()
+
+    caps = [FrameGetter(video_path, 5) for video_path in video_paths]
+    trks = [PersonTracker("euclidean", rec) for _ in video_paths]
+    global_tracker = GlobalTracker(len(caps), "euclidean", rec, distance_threshold=50)
+    homo_mats = [load_homography(path) for path in calibrated_paths]
+    projections: dict[int, tuple[TrackedObject, list[int, np.ndarray]]] = {}
+    global_tracked: list[TrackedObject] = []
 
     # Visualizer
     floor_plan_drawer = FloorPlanDrawer(
@@ -96,8 +96,7 @@ def main() -> None:
                 obj_mats: list[MatLike] = [
                     sv.crop_image(image=frame, xyxy=xyxy) for xyxy in detections.xyxy
                 ]
-                reids = [rec.infer(mat) for mat in obj_mats]
-                tracked = trks[cid].update(detections, reids)
+                tracked = trks[cid].update(detections, obj_mats)
                 projections[cid] = (tracked, project_points(tracked, homo_mats[cid]))
                 last_frames[cid] = preview_frame(
                     annotate(frame, detections, tracked), 0.4
