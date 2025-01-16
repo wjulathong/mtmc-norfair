@@ -10,7 +10,7 @@ import supervision as sv
 from cv2.typing import MatLike
 from norfair import Detection, OptimizedKalmanFilterFactory, Tracker
 from norfair.tracker import TrackedObject
-from scipy.spatial.distance import cosine
+from scipy.spatial.distance import cdist
 from ultralytics import YOLO
 
 YOLO_MODEL_PATH = Path("./models/yolo11s.pt")
@@ -67,34 +67,43 @@ def embedding_distance(
     matched_not_init_trackers: TrackedObject,
     unmatched_trackers: TrackedObject,
 ):
-    snd_embeddings = []
-
-    if unmatched_trackers.last_detection.embedding is not None:
-        snd_embeddings.append(
-            np.array(unmatched_trackers.last_detection.embedding).reshape(256)
-        )
-
-    for detection in unmatched_trackers.past_detections:
-        if detection.embedding is not None:
-            snd_embeddings.append(np.array(detection.embedding).reshape(256))
+    snd_embeddings = (
+        [unmatched_trackers.last_detection.embedding]
+        if unmatched_trackers.last_detection.embedding is not None
+        else []
+    )
+    snd_embeddings.extend(
+        [
+            detection.embedding
+            for detection in unmatched_trackers.past_detections
+            if detection.embedding is not None
+        ]
+    )
 
     if not snd_embeddings:
         return 2.0
 
-    fst_embeddings = []
-    for detection_fst in matched_not_init_trackers.past_detections:
-        if detection_fst.embedding is not None:
-            fst_embeddings.append(np.array(detection_fst.embedding).reshape(256))
+    fst_embeddings = (
+        [matched_not_init_trackers.last_detection.embedding]
+        if matched_not_init_trackers.last_detection.embedding is not None
+        else []
+    )
+    fst_embeddings.extend(
+        [
+            detection.embedding
+            for detection in matched_not_init_trackers.past_detections
+            if detection.embedding is not None
+        ]
+    )
 
     if not fst_embeddings:
         return 2.0
 
-    min_distance = 2.0
-    for snd_emb in snd_embeddings:
-        for fst_emb in fst_embeddings:
-            distance = cosine(snd_emb, fst_emb)
-            min_distance = min(min_distance, distance)
-    return min_distance
+    snd_embeddings = np.array(snd_embeddings).reshape(-1, 256)
+    fst_embeddings = np.array(fst_embeddings).reshape(-1, 256)
+
+    distances = cdist(snd_embeddings, fst_embeddings, metric="cosine")
+    return np.min(distances)
 
 
 def mean_embedding_distance(
@@ -112,8 +121,6 @@ def mean_embedding_distance(
     if not snd_embeddings:
         return 2.0
 
-    snd_embedding = np.mean(snd_embeddings, axis=0)
-
     fst_embeddings = []
     for detection_fst in matched_not_init_trackers.past_detections:
         if detection_fst.embedding is not None:
@@ -122,36 +129,13 @@ def mean_embedding_distance(
     if not fst_embeddings:
         return 2.0
 
-    fst_embedding = np.mean(fst_embeddings, axis=0)
+    snd_embeddings = np.array(snd_embeddings).reshape(-1, 256)
+    fst_embeddings = np.array(fst_embeddings).reshape(-1, 256)
 
-    return cosine(snd_embedding, fst_embedding)
+    snd_embedding = np.mean(snd_embeddings, axis=0).reshape(1, -1)
+    fst_embedding = np.mean(fst_embeddings, axis=0).reshape(1, -1)
 
-
-def embedding_distance_old(
-    matched_not_init_trackers: TrackedObject,
-    unmatched_trackers: TrackedObject,
-):
-    snd_embedding = unmatched_trackers.last_detection.embedding
-
-    if snd_embedding is None:
-        for detection in reversed(unmatched_trackers.past_detections):
-            if detection.embedding is not None:
-                snd_embedding = detection.embedding
-                break
-        else:
-            return 2.0
-
-    snd_embedding = np.array(snd_embedding).reshape(256)
-
-    for detection_fst in matched_not_init_trackers.past_detections:
-        if detection_fst.embedding is None:
-            continue
-
-        fst_embedding = np.array(detection_fst.embedding).reshape(256)
-
-        dist = cosine(snd_embedding, fst_embedding)
-        return dist
-    return 2.0
+    return cdist(snd_embedding, fst_embedding, metric="cosine")[0, 0]
 
 
 def infer_embeddings(
