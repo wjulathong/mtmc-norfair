@@ -1,4 +1,5 @@
 import json
+import time
 from collections import deque
 from pathlib import Path
 
@@ -9,13 +10,23 @@ from norfair import Palette
 from norfair.tracker import TrackedObject
 
 # import enum
-# import time
 # import queue
 # import multiprocessing as mp
 
 
 def preview_frame(frame: MatLike, sf: float) -> MatLike:
     return cv2.resize(frame, dsize=None, fx=sf, fy=sf, interpolation=cv2.INTER_AREA)
+
+
+class FPS:
+    def __init__(self) -> None:
+        self.prev_time: float = time.time()
+        self.fps: float = 0
+
+    def update(self):
+        cur_time = time.time()
+        self.fps = 1 / (cur_time - self.prev_time)
+        self.prev_time = cur_time
 
 
 class FrameGetter:

@@ -14,6 +14,7 @@ from processors import (
     PersonTracker,
 )
 from utils import (
+    FPS,
     FloorPlanDrawer,
     FrameGetter,
     draw_floor_plan,
@@ -83,6 +84,7 @@ def main() -> None:
 
     manual = False
     paused = False
+    fps = FPS()
     last_frames: dict[int, MatLike | None] = {}
     while True:
         if not paused or manual:
@@ -101,6 +103,9 @@ def main() -> None:
                 last_frames[cid] = preview_frame(
                     annotate(frame, detections, tracked), 0.4
                 )
+
+        fps.update()
+        print(f"FPS: {fps.fps:.2f}")
 
         for cid, frame in last_frames.items():
             if frame is None:
