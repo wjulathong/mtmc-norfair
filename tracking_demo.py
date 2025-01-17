@@ -7,7 +7,7 @@ from norfair.tracker import TrackedObject
 from supervision import crop_image
 
 from utils.drawing import FloorPlanDrawer, annotate, draw_floor_plan, preview_frame
-from utils.inference import Detector, GlobalTracker, PersonRecognizer, PersonTracker
+from utils.processing import Detector, GlobalTracker, PersonRecognizer, PersonTracker
 from utils.transform import load_homography, prepare_floor_plan, project_points
 from utils.video import FPS, FrameGetter
 
