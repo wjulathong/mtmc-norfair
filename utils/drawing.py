@@ -15,14 +15,16 @@ def preview_frame(frame: MatLike, sf: float) -> MatLike:
     return cv2.resize(frame, dsize=None, fx=sf, fy=sf, interpolation=cv2.INTER_AREA)
 
 
-def annotate(frame: MatLike, detections: sv.Detections, tracked: list[TrackedObject]):
+def annotate(
+    frame: MatLike, detections: sv.Detections, tracked_objects: list[TrackedObject]
+):
     labels = [
         f"{cname} {conf:.2f}"
         for cname, conf in zip(detections["class_name"], detections.confidence)
     ]
-    annot_frame = BBOX_ANN.annotate(scene=frame.copy(), detections=detections)
-    annot_frame = LABEL_ANN.annotate(
-        scene=annot_frame, detections=detections, labels=labels
+    annotated_frame = BBOX_ANN.annotate(scene=frame.copy(), detections=detections)
+    annotated_frame = LABEL_ANN.annotate(
+        scene=annotated_frame, detections=detections, labels=labels
     )
     draw_points(annot_frame, tracked, radius=8, text_size=1)
     return annot_frame
@@ -69,6 +71,8 @@ def draw_floor_plan(
                 font_thickness,
             )
     return viz
+    draw_points(annotated_frame, tracked_objects, radius=8, text_size=1)
+    return annotated_frame
 
 
 class FloorPlanDrawer:
