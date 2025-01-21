@@ -6,8 +6,14 @@ from cv2.typing import MatLike
 from norfair.tracker import TrackedObject
 from supervision import crop_image
 
-from utils.drawing import FloorPlanDrawer, annotate, draw_floor_plan, preview_frame
-from utils.processing import Detector, GlobalTracker, PersonRecognizer, PersonTracker
+from utils.drawing import (
+    FloorPlanDrawer,
+    GlobalFloorPlanDrawer,
+    annotate,
+    preview_frame,
+)
+from utils.global_association import GlobalMatcher
+from utils.processing import Detector, PersonRecognizer, PersonTracker
 from utils.transform import load_homography, prepare_floor_plan, project_points
 from utils.video import FPS, FrameGetter
 
@@ -50,14 +56,22 @@ def main() -> None:
 
     caps = [FrameGetter(video_path, 5) for video_path in video_paths]
     trks = [PersonTracker("euclidean", rec) for _ in video_paths]
-    global_tracker = GlobalTracker(len(caps), "euclidean", rec, distance_threshold=50)
     homo_mats = [load_homography(path) for path in calibrated_paths]
-    projections: dict[int, tuple[TrackedObject, list[int, np.ndarray]]] = {}
-    global_tracked: list[TrackedObject] = []
+    projections: dict[int, list[tuple[TrackedObject, np.ndarray]]] = {}
+
+    global_matcher = GlobalMatcher(rec)
 
     # Visualizer
+    history_length = 60
     floor_plan_drawer = FloorPlanDrawer(
-        scaled_floor_plan, history_length=50, transform_matrix=transform_matrix
+        scaled_floor_plan,
+        history_length=history_length,
+        transform_matrix=transform_matrix,
+    )
+    global_floor_plan_drawer = GlobalFloorPlanDrawer(
+        scaled_floor_plan,
+        history_length=history_length // len(caps),
+        transform_matrix=transform_matrix,
     )
 
     manual = False
@@ -76,22 +90,19 @@ def main() -> None:
                 obj_mats: list[MatLike] = [
                     crop_image(frame, xyxy) for xyxy in detections.xyxy
                 ]
-                tracked = trks[cid].update(detections, obj_mats)
-                projections[cid] = (tracked, project_points(tracked, homo_mats[cid]))
+                tracked_objects = trks[cid].update(detections, obj_mats)
+                projections[cid] = project_points(tracked_objects, homo_mats[cid])
                 last_frames[cid] = preview_frame(
-                    annotate(frame, detections, tracked), 0.4
+                    annotate(frame, detections, tracked_objects), 0.3
                 )
 
-        fps.update()
-        print(f"FPS: {fps.fps:.2f}")
+        global_objects = global_matcher.match(projections)
 
         for cid, frame in last_frames.items():
             if frame is None:
                 break
-            all_projected = preview_frame(
-                draw_floor_plan(scaled_floor_plan, projections, transform_matrix),
-                0.4,
-            )
+            if not paused:
+                all_projected = preview_frame(floor_plan_drawer.draw(projections), 0.3)
             if paused:
                 cv2.putText(
                     frame,
@@ -114,23 +125,25 @@ def main() -> None:
             cv2.imshow(f"{MAIN_WINDOW_NAME}_{cid}", frame)
             cv2.imshow("all_projected", all_projected)
 
-        if not paused or manual:
-            for cid, (t_obj, projected_points) in projections.items():
-                global_tracked = global_tracker.update(t_obj, projected_points)
+        if not paused:
+            merged_projected = preview_frame(
+                global_floor_plan_drawer.draw(global_objects), 0.3
+            )
+        if paused:
+            cv2.putText(
+                merged_projected,
+                "Paused",
+                (10, merged_projected.shape[0] - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (0, 0, 255),
+                2,
+            )
+        cv2.imshow("merged_projected", merged_projected)
 
-        if global_tracked:
-            fp_frame = preview_frame(floor_plan_drawer.draw(global_tracked), 0.4)
-            if paused:
-                cv2.putText(
-                    fp_frame,
-                    "Paused",
-                    (10, fp_frame.shape[0] - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1,
-                    (0, 0, 255),
-                    2,
-                )
-            cv2.imshow("global_map", fp_frame)
+        fps.update()
+        if not paused:
+            print(f"FPS: {fps.fps:.2f}")
 
         key_press = cv2.waitKey(1) & 0xFF
         if key_press == ord("p"):

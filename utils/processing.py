@@ -55,40 +55,22 @@ class PersonRecognizer:
         )
 
 
+def extract_embeddings(tracked_object: TrackedObject) -> list[np.ndarray | None]:
+    embeddings = [tracked_object.last_detection.embedding]
+    embeddings.extend(
+        detection.embedding for detection in tracked_object.past_detections
+    )
+    return embeddings
+
+
 def embedding_distance(
     matched_not_init_trackers: TrackedObject,
     unmatched_trackers: TrackedObject,
 ):
-    snd_embeddings = (
-        [unmatched_trackers.last_detection.embedding]
-        if unmatched_trackers.last_detection.embedding is not None
-        else []
-    )
-    snd_embeddings.extend(
-        [
-            detection.embedding
-            for detection in unmatched_trackers.past_detections
-            if detection.embedding is not None
-        ]
-    )
+    snd_embeddings: list[np.ndarray] = extract_embeddings(unmatched_trackers)
+    fst_embeddings: list[np.ndarray] = extract_embeddings(matched_not_init_trackers)
 
-    if not snd_embeddings:
-        return 2.0
-
-    fst_embeddings = (
-        [matched_not_init_trackers.last_detection.embedding]
-        if matched_not_init_trackers.last_detection.embedding is not None
-        else []
-    )
-    fst_embeddings.extend(
-        [
-            detection.embedding
-            for detection in matched_not_init_trackers.past_detections
-            if detection.embedding is not None
-        ]
-    )
-
-    if not fst_embeddings:
+    if not snd_embeddings or not fst_embeddings:
         return 2.0
 
     snd_embeddings = np.array(snd_embeddings).reshape(-1, 256)
@@ -101,24 +83,10 @@ def embedding_distance(
 def mean_embedding_distance(
     matched_not_init_trackers: TrackedObject, unmatched_trackers: TrackedObject
 ):
-    snd_embeddings = []
-    if unmatched_trackers.last_detection.embedding is not None:
-        snd_embeddings.append(
-            np.array(unmatched_trackers.last_detection.embedding).reshape(256)
-        )
-    for detection in unmatched_trackers.past_detections:
-        if detection.embedding is not None:
-            snd_embeddings.append(np.array(detection.embedding).reshape(256))
+    snd_embeddings: list[np.ndarray] = extract_embeddings(unmatched_trackers)
+    fst_embeddings: list[np.ndarray] = extract_embeddings(matched_not_init_trackers)
 
-    if not snd_embeddings:
-        return 2.0
-
-    fst_embeddings = []
-    for detection_fst in matched_not_init_trackers.past_detections:
-        if detection_fst.embedding is not None:
-            fst_embeddings.append(np.array(detection_fst.embedding).reshape(256))
-
-    if not fst_embeddings:
+    if not snd_embeddings or not fst_embeddings:
         return 2.0
 
     snd_embeddings = np.array(snd_embeddings).reshape(-1, 256)
@@ -130,21 +98,11 @@ def mean_embedding_distance(
     return cdist(snd_embedding, fst_embedding, metric="cosine")[0, 0]
 
 
-def infer_embeddings(
-    reid_model: PersonRecognizer,
-    matched_not_init_trackers: TrackedObject,
-    unmatched_trackers: TrackedObject,
-):
-    for last_detection in (
-        matched_not_init_trackers.last_detection,
-        unmatched_trackers.last_detection,
-    ):
-        if last_detection.embedding is None:
-            last_detection.embedding = reid_model.infer(last_detection.data["cropped"])
-    for detection in matched_not_init_trackers.past_detections:
-        if detection.embedding is None:
-            detection.embedding = reid_model.infer(detection.data["cropped"])
-    for detection in unmatched_trackers.past_detections:
+def infer_embeddings(reid_model: PersonRecognizer, tracked_object: TrackedObject):
+    last_detection = tracked_object.last_detection
+    if last_detection.embedding is None:
+        last_detection.embedding = reid_model.infer(last_detection.data["cropped"])
+    for detection in tracked_object.past_detections:
         if detection.embedding is None:
             detection.embedding = reid_model.infer(detection.data["cropped"])
 
@@ -201,60 +159,6 @@ class PersonTracker:
         unmatched_trackers: TrackedObject,
     ):
         # print(f"[{time.time():.2f}] PersonTracker: Called REID")
-        infer_embeddings(reid_model, matched_not_init_trackers, unmatched_trackers)
-        return mean_embedding_distance(matched_not_init_trackers, unmatched_trackers)
-
-
-class GlobalTracker:
-    def __init__(
-        self,
-        total_tracker: int,
-        distance_function: str | Callable[[Detection, TrackedObject], float],
-        reid_model: PersonRecognizer,
-        reid_distance_function: Callable[[TrackedObject, TrackedObject], float]
-        | None = None,
-        hit_counter_max: int = 10,
-        distance_threshold: float = 50.0,
-        reid_hit_counter_max: int = 300,
-        reid_distance_threshold: float = 0.7,
-        past_detections_length: int = 10,
-        initialization_delay: int | None = None,
-    ) -> None:
-        self.total_tracker = total_tracker
-        self.tracker = Tracker(
-            filter_factory=OptimizedKalmanFilterFactory(),
-            distance_function=distance_function,
-            reid_distance_function=reid_distance_function
-            if reid_distance_function is not None
-            else partial(self._embedding_distance, reid_model),
-            hit_counter_max=total_tracker * hit_counter_max,
-            distance_threshold=distance_threshold,
-            reid_hit_counter_max=total_tracker * reid_hit_counter_max,
-            reid_distance_threshold=reid_distance_threshold,
-            past_detections_length=past_detections_length,
-            initialization_delay=initialization_delay,
-        )
-
-    def update(
-        self, tracked: TrackedObject, projected_points: list[tuple[int, np.ndarray]]
-    ):
-        nf_detections = []
-        for t_obj, (_, point) in zip(tracked, projected_points):
-            nf_detections.append(
-                Detection(
-                    points=point[:2].reshape(1, -1),
-                    scores=t_obj.last_detection.scores,
-                    data=t_obj.last_detection.data,
-                )
-            )
-        return self.tracker.update(nf_detections, self.total_tracker)
-
-    def _embedding_distance(
-        self,
-        reid_model: PersonRecognizer,
-        matched_not_init_trackers: TrackedObject,
-        unmatched_trackers: TrackedObject,
-    ):
-        print(f"[{time.time():.2f}] GlobalTracker: Called REID")
-        infer_embeddings(reid_model, matched_not_init_trackers, unmatched_trackers)
-        return mean_embedding_distance(matched_not_init_trackers, unmatched_trackers)
+        infer_embeddings(reid_model, matched_not_init_trackers)
+        infer_embeddings(reid_model, unmatched_trackers)
+        return embedding_distance(matched_not_init_trackers, unmatched_trackers)

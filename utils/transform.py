@@ -13,18 +13,20 @@ def load_homography(calibration_path: Path) -> np.ndarray:
 
 
 def project_points(
-    tracked: list[TrackedObject], homography: np.ndarray
-) -> list[tuple[int, np.ndarray]]:
-    objects = [(obj.id, np.mean(np.array(obj.estimate), axis=0)) for obj in tracked]
-    if not objects:
+    tracked_objects: list[TrackedObject], homography: np.ndarray
+) -> list[tuple[TrackedObject, np.ndarray]]:
+    if not tracked_objects:
         return []
 
-    ids, points = zip(*objects)
-    points_array = np.array(points, dtype=np.float32)
+    points_array = np.array(
+        [np.mean(np.array(obj.estimate), axis=0) for obj in tracked_objects],
+        dtype=np.float32,
+    )
     homogeneous_points = np.column_stack([points_array, np.ones(len(points_array))])
     projected_points = homography @ homogeneous_points.T
     projected_points /= projected_points[2]
-    return list(zip(ids, projected_points.T))
+    projected_points = projected_points[:2].T
+    return [(obj, projected_points[i]) for i, obj in enumerate(tracked_objects)]
 
 
 def prepare_floor_plan(floor_plan: MatLike, scale: float) -> tuple[MatLike, np.ndarray]:
