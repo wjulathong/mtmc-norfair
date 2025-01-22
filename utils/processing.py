@@ -1,4 +1,3 @@
-import time
 from functools import partial
 from pathlib import Path
 from typing import Callable
@@ -158,7 +157,6 @@ class PersonTracker:
         matched_not_init_trackers: TrackedObject,
         unmatched_trackers: TrackedObject,
     ):
-        # print(f"[{time.time():.2f}] PersonTracker: Called REID")
         infer_embeddings(reid_model, matched_not_init_trackers)
         infer_embeddings(reid_model, unmatched_trackers)
         return embedding_distance(matched_not_init_trackers, unmatched_trackers)

@@ -152,7 +152,6 @@ class GlobalMatcher:
                     global_obj.get_embeddings(self.reid_model),
                 )
 
-
         # Combine distances with weights
         cost_matrix = self.pos_weight * (
             pos_distances / self.pos_threshold
