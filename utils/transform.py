@@ -26,7 +26,7 @@ def project_points(
     projected_points = homography @ homogeneous_points.T
     projected_points /= projected_points[2]
     projected_points = projected_points[:2].T
-    return [(obj, projected_points[i]) for i, obj in enumerate(tracked_objects)]
+    return list(zip(tracked_objects, projected_points))
 
 
 def prepare_floor_plan(floor_plan: MatLike, scale: float) -> tuple[MatLike, np.ndarray]:

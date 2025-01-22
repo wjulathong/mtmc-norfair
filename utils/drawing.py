@@ -46,11 +46,9 @@ class BaseFloorPlanDrawer:
 
     def _transform_point(self, point: np.ndarray) -> np.ndarray:
         if self.transform_matrix is not None:
-            point = (
-                (self.transform_matrix @ np.hstack((point, 1)).reshape(-1, 1))
-                .flatten()
-                .astype(int)
-            )
+            homogeneous = np.array([point[0], point[1], 1])
+            transformed = self.transform_matrix @ homogeneous
+            point = transformed.astype(int)
         return point
 
     def _draw_history(
@@ -116,8 +114,8 @@ class GlobalFloorPlanDrawer(BaseFloorPlanDrawer):
     def draw(self, objects: list[GlobalObject]) -> MatLike:
         viz = self.floor_plan.copy()
         for obj in objects:
-            point = self._transform_point(obj.position)
             color = Palette.choose_color(obj.id)
+            point = self._transform_point(obj.position)
             self.history.setdefault(obj.id, deque(maxlen=self.history_length)).append(
                 point
             )
@@ -125,167 +123,3 @@ class GlobalFloorPlanDrawer(BaseFloorPlanDrawer):
             self._draw_history(viz, self.history[obj.id], color)
             self._draw_point(viz, point, color, f"{obj.id}")
         return viz
-
-
-# class FloorPlanDrawer:
-#     def __init__(
-#         self,
-#         floor_plan: MatLike,
-#         history_length: int = 10,
-#         transform_matrix: np.ndarray | None = None,
-#     ) -> None:
-#         self.viz = floor_plan.copy()
-#         self.history_length = history_length
-#         self.transform_matrix = transform_matrix
-#
-#         self.history: dict[int, dict[int, deque[np.ndarray]]] = {}
-#
-#     def draw(
-#         self,
-#         projections: dict[int, list[tuple[TrackedObject, np.ndarray]]],
-#     ) -> MatLike:
-#         viz = self.viz.copy()
-#
-#         for cid, tracked_objects in projections.items():
-#             for obj, point in tracked_objects:
-#                 color = Palette.choose_color(obj.id)
-#
-#                 if self.transform_matrix is not None:
-#                     point = (
-#                         (self.transform_matrix @ np.hstack((point, 1)).reshape(-1, 1))
-#                         .flatten()
-#                         .astype(int)
-#                     )
-#
-#                 self.history.setdefault(cid, {}).setdefault(
-#                     obj.id, deque(maxlen=self.history_length)
-#                 ).append(point)
-#
-#                 for i in range(1, len(self.history[cid][obj.id])):
-#                     cv2.line(
-#                         viz,
-#                         tuple(self.history[cid][obj.id][i - 1]),
-#                         tuple(self.history[cid][obj.id][i]),
-#                         color=color,
-#                         thickness=2,
-#                     )
-#
-#                 cv2.circle(
-#                     viz,
-#                     tuple(point),
-#                     radius=5,
-#                     color=color,
-#                     thickness=-1,
-#                 )
-#
-#                 label = f"{cid} {obj.id}"
-#                 font = cv2.FONT_HERSHEY_SIMPLEX
-#                 font_scale = 1
-#                 font_thickness = 2
-#                 (text_width, text_height), _ = cv2.getTextSize(
-#                     label, font, font_scale, font_thickness
-#                 )
-#                 text_x = point[0] - text_width // 2
-#                 text_y = point[1] - 10
-#                 cv2.putText(
-#                     viz,
-#                     label,
-#                     (text_x, text_y),
-#                     font,
-#                     font_scale,
-#                     (0, 0, 0),
-#                     font_thickness + 1,
-#                 )
-#                 cv2.putText(
-#                     viz,
-#                     label,
-#                     (text_x, text_y),
-#                     font,
-#                     font_scale,
-#                     color,
-#                     font_thickness,
-#                 )
-#
-#         return viz
-#
-#
-# class GlobalFloorPlanDrawer:
-#     def __init__(
-#         self,
-#         floor_plan: MatLike,
-#         history_length: int = 10,
-#         transform_matrix: np.ndarray | None = None,
-#     ) -> None:
-#         self.viz = floor_plan.copy()
-#         self.history_length = history_length
-#         self.transform_matrix = transform_matrix
-#
-#         self.history: dict[int, deque[np.ndarray]] = {}
-#
-#     def draw(
-#         self,
-#         objects: list[GlobalObject],
-#     ) -> MatLike:
-#         viz = self.viz.copy()
-#
-#         for obj in objects:
-#             point = obj.position
-#             color = Palette.choose_color(obj.id)
-#
-#             if self.transform_matrix is not None:
-#                 point = (
-#                     (self.transform_matrix @ np.hstack((point, 1)).reshape(-1, 1))
-#                     .flatten()
-#                     .astype(int)
-#                 )
-#
-#             self.history.setdefault(obj.id, deque(maxlen=self.history_length)).append(
-#                 point
-#             )
-#
-#             for i in range(1, len(self.history[obj.id])):
-#                 cv2.line(
-#                     viz,
-#                     tuple(self.history[obj.id][i - 1]),
-#                     tuple(self.history[obj.id][i]),
-#                     color=color,
-#                     thickness=2,
-#                 )
-#
-#             cv2.circle(
-#                 viz,
-#                 tuple(point),
-#                 radius=5,
-#                 color=color,
-#                 thickness=-1,
-#             )
-#
-#             label = f"{obj.id}"
-#             font = cv2.FONT_HERSHEY_SIMPLEX
-#             font_scale = 1
-#             font_thickness = 2
-#             (text_width, text_height), _ = cv2.getTextSize(
-#                 label, font, font_scale, font_thickness
-#             )
-#             text_x = point[0] - text_width // 2
-#             text_y = point[1] - 10
-#             cv2.putText(
-#                 viz,
-#                 label,
-#                 (text_x, text_y),
-#                 font,
-#                 font_scale,
-#                 (0, 0, 0),
-#                 font_thickness + 1,
-#             )
-#             cv2.putText(
-#                 viz,
-#                 label,
-#                 (text_x, text_y),
-#                 font,
-#                 font_scale,
-#                 color,
-#                 font_thickness,
-#             )
-#
-#         return viz
