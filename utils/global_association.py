@@ -14,6 +14,12 @@ class LocalObject:
     projected_position: np.ndarray
     global_id: int | None = None
 
+    def is_active(self):
+        return (
+            not self.tracked_object.is_initializing
+            and self.tracked_object.hit_counter_is_positive
+        )
+
     def get_embeddings(self, reid_model: PersonRecognizer):
         embeddings = extract_embeddings(self.tracked_object)
         if any(emb is None for emb in embeddings):
@@ -64,6 +70,13 @@ class GlobalMatcher:
         self.global_id_counter += 1
         return global_id
 
+    def get_active_objects(self):
+        return [
+            global_obj
+            for global_obj in self.global_objects.values()
+            if any(local_obj.is_active() for local_obj in global_obj.cameras.values())
+        ]
+
     def match(self, projections: dict[int, list[tuple[TrackedObject, np.ndarray]]]):
         local_objects_by_camera: dict[int, dict[int, LocalObject]] = {}
 
@@ -93,7 +106,7 @@ class GlobalMatcher:
         for global_obj in self.global_objects.values():
             global_obj.update_position()
 
-        return list(self.global_objects.values())
+        return self.get_active_objects()
 
     def _match_camera(self, camera_id: int, local_objects: dict[int, LocalObject]):
         if not local_objects:
