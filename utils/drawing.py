@@ -17,6 +17,18 @@ def preview_frame(frame: MatLike, sf: float) -> MatLike:
     return cv2.resize(frame, dsize=None, fx=sf, fy=sf, interpolation=cv2.INTER_AREA)
 
 
+def draw_paused_frame(frame: MatLike):
+    cv2.putText(
+        frame,
+        "Paused",
+        (10, frame.shape[0] - 10),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1,
+        (0, 0, 255),
+        2,
+    )
+
+
 def annotate(
     frame: MatLike, detections: sv.Detections, tracked_objects: list[TrackedObject]
 ):

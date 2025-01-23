@@ -10,6 +10,7 @@ from utils.drawing import (
     FloorPlanDrawer,
     GlobalFloorPlanDrawer,
     annotate,
+    draw_paused_frame,
     preview_frame,
 )
 from utils.global_association import GlobalMatcher
@@ -62,15 +63,14 @@ def main() -> None:
     global_matcher = GlobalMatcher(rec)
 
     # Visualizer
-    history_length = 60
     floor_plan_drawer = FloorPlanDrawer(
         scaled_floor_plan,
-        history_length=history_length,
+        history_length=50,
         transform_matrix=transform_matrix,
     )
     global_floor_plan_drawer = GlobalFloorPlanDrawer(
         scaled_floor_plan,
-        history_length=history_length // len(caps),
+        history_length=50,
         transform_matrix=transform_matrix,
     )
 
@@ -92,54 +92,20 @@ def main() -> None:
                 ]
                 tracked_objects = trks[cid].update(detections, obj_mats)
                 projections[cid] = project_points(tracked_objects, homo_mats[cid])
-                last_frames[cid] = preview_frame(
+                last_frame = preview_frame(
                     annotate(frame, detections, tracked_objects), 0.3
                 )
+                last_frames[cid] = last_frame
+                cv2.imshow(f"{MAIN_WINDOW_NAME}_{cid}", last_frame)
 
-        global_objects = global_matcher.match(projections)
+            global_objects = global_matcher.match(projections)
 
-        for cid, frame in last_frames.items():
-            if frame is None:
-                break
-            if not paused:
-                all_projected = preview_frame(floor_plan_drawer.draw(projections), 0.3)
-            if paused:
-                cv2.putText(
-                    frame,
-                    "Paused",
-                    (10, frame.shape[0] - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1,
-                    (0, 0, 255),
-                    2,
-                )
-                cv2.putText(
-                    all_projected,
-                    "Paused",
-                    (10, all_projected.shape[0] - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1,
-                    (0, 0, 255),
-                    2,
-                )
-            cv2.imshow(f"{MAIN_WINDOW_NAME}_{cid}", frame)
-            cv2.imshow("all_projected", all_projected)
-
-        if not paused:
-            merged_projected = preview_frame(
+            locals_frame = preview_frame(floor_plan_drawer.draw(projections), 0.3)
+            global_frame = preview_frame(
                 global_floor_plan_drawer.draw(global_objects), 0.3
             )
-        if paused:
-            cv2.putText(
-                merged_projected,
-                "Paused",
-                (10, merged_projected.shape[0] - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                (0, 0, 255),
-                2,
-            )
-        cv2.imshow("merged_projected", merged_projected)
+            cv2.imshow("Locals", locals_frame)
+            cv2.imshow("Global", global_frame)
 
         fps.update()
         if not paused:
@@ -148,6 +114,14 @@ def main() -> None:
         key_press = cv2.waitKey(1) & 0xFF
         if key_press == ord("p"):
             paused = not paused
+            if paused:
+                for cid, last_frame in last_frames.items():
+                    draw_paused_frame(last_frame)
+                    cv2.imshow(f"{MAIN_WINDOW_NAME}_{cid}", last_frame)
+                draw_paused_frame(locals_frame)
+                draw_paused_frame(global_frame)
+                cv2.imshow("Locals", locals_frame)
+                cv2.imshow("Global", global_frame)
         elif key_press == ord("e"):
             manual = True
         elif key_press == ord("l"):
