@@ -7,11 +7,11 @@ from cv2.typing import MatLike
 
 class FPS:
     def __init__(self) -> None:
-        self.prev_time: float = time.time()
+        self.prev_time: float = time.perf_counter()
         self.fps: float = 0
 
     def update(self):
-        cur_time = time.time()
+        cur_time = time.perf_counter()
         self.fps = 1 / (cur_time - self.prev_time)
         self.prev_time = cur_time
 
