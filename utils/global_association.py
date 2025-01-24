@@ -188,8 +188,9 @@ class GlobalMatcher:
     def _compute_reid_distance(
         self, local_embeddings: list[np.ndarray], global_embeddings: list[np.ndarray]
     ):
-        local_embeddings_array = np.array(local_embeddings).reshape(-1, 256)
-        global_embeddings_array = np.array(global_embeddings).reshape(-1, 256)
+        emb_size = local_embeddings[0].shape[1]
+        local_embeddings_array = np.array(local_embeddings).reshape(-1, emb_size)
+        global_embeddings_array = np.array(global_embeddings).reshape(-1, emb_size)
         distances = cdist(
             local_embeddings_array, global_embeddings_array, metric="cosine"
         )
