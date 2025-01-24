@@ -34,14 +34,14 @@ Before running the scripts, ensure you have the following:
   - Scikit-learn
   - Ultralytics
   - PyTorch
-  - OpenVINO
   - Norfair
   - Supervision
+  - yacs, termcolor, gdown (for fast-reid)
 - **Input Files:**
   - Floor plan image
   - Camera images or video files
 
 You can install the required libraries with the following command:
 ```bash
-pip install opencv-python numpy scikit-learn ultralytics torch torchvision openvino norfair supervision
+pip install opencv-python numpy scikit-learn ultralytics torch torchvision openvino norfair supervision yacs termcolor gdown
 ```

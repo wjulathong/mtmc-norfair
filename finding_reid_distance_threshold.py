@@ -46,8 +46,8 @@ def extract_person_id(filename: str) -> int:
 class EmbeddingProcessor:
     """Handle embedding creation and storage"""
 
-    def __init__(self, model_path: Path) -> None:
-        self.model = PersonRecognizer(model_path)
+    def __init__(self, config_path: Path, model_path: Path) -> None:
+        self.model = PersonRecognizer(config_path, ["MODEL.WEIGHTS", str(model_path)])
 
     def create_embeddings(self, image_dir: Path, save_dir: Path) -> None:
         """Create and save embeddings from images"""
@@ -331,13 +331,12 @@ class ResultVisualizer:
 
 
 def main():
-    model_name = "openvino_smallest"
+    model_name = "fastreid_duke_sbs_r101"
 
     # Initilize components
-    model_path = Path(
-        "./models/intel/person-reidentification-retail-0288/FP16/person-reidentification-retail-0288.xml"
-    )
-    processor = EmbeddingProcessor(model_path)
+    config_path = Path("./models/fast-reid/sbs-R101-ibn.yml")
+    model_path = Path("./models/fast-reid/duke_sbs_R101-ibn.pth")
+    processor = EmbeddingProcessor(config_path, model_path)
 
     # Setup paths
     base_dir = Path("../mdx/Market-1501-v15.09.15").resolve()

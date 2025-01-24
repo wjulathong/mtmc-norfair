@@ -21,11 +21,8 @@ from utils.video import FPS, FrameGetter
 MAIN_WINDOW_NAME = "Camera"
 
 YOLO_MODEL_PATH = Path("./models/yolo11m.pt")
-REID_MODEL_NAME = "person-reidentification-retail-0288"
-REID_MODEL_SIZE = "FP16"
-REID_MODEL_PATH = Path(
-    f"./models/intel/{REID_MODEL_NAME}/{REID_MODEL_SIZE}/{REID_MODEL_NAME}.xml"
-)
+REID_CONFIG_PATH = Path("./models/fast-reid/AGW_R50.yml")
+REID_MODEL_PATH = Path("./models/fast-reid/market_agw_R50.pth")
 
 
 def main() -> None:
@@ -55,17 +52,17 @@ def main() -> None:
 
     # Model
     det = Detector(YOLO_MODEL_PATH)
-    rec = PersonRecognizer(REID_MODEL_PATH)
+    rec = PersonRecognizer(REID_CONFIG_PATH, ["MODEL.WEIGHTS", str(REID_MODEL_PATH)])
 
     caps = [FrameGetter(video_path, 5) for video_path in video_paths]
     trks = [
-        PersonTracker("euclidean", rec, reid_distance_threshold=0.3)
+        PersonTracker("euclidean", rec, reid_distance_threshold=0.1)
         for _ in video_paths
     ]
     homo_mats = [load_homography(path) for path in calibrated_paths]
     projections: dict[int, list[tuple[TrackedObject, np.ndarray]]] = {}
 
-    global_matcher = GlobalMatcher(rec)
+    global_matcher = GlobalMatcher(rec, reid_threshold=0.1)
 
     # Visualizer
     floor_plan_drawer = FloorPlanDrawer(

@@ -4,13 +4,17 @@ from typing import Callable
 
 import cv2
 import numpy as np
-import openvino as ov
 import supervision as sv
+import torch
+from torch.nn.functional import normalize
 from cv2.typing import MatLike
 from norfair import Detection, OptimizedKalmanFilterFactory, Tracker
 from norfair.tracker import TrackedObject
 from scipy.spatial.distance import cdist
 from ultralytics import YOLO
+
+from fastreid.config import get_cfg
+from fastreid.engine.defaults import DefaultPredictor
 
 
 class Detector:
@@ -32,26 +36,36 @@ class Detector:
 
 
 class PersonRecognizer:
-    def __init__(self, model_path: Path) -> None:
-        self.core = ov.Core()
-        self.model = self.core.read_model(model_path)
-        self.model.reshape([1, 3, 256, 128])
-        self.layout = ov.Layout("NCHW")
-        self.compiled_model = self.core.compile_model(self.model)
+    def __init__(self, config_file: Path, opts: list | None = None) -> None:
+        opts = [] if opts is None else opts
+        cfg = get_cfg()
+        cfg.merge_from_file(str(config_file))
+        cfg.merge_from_list(opts)
+        self.cfg = cfg
+        self.predictor = DefaultPredictor(cfg)
 
-        self.tensor_shape = self.compiled_model.input().shape
-        self.tensor_width = self.tensor_shape[self.layout.get_index_by_name("width")]
-        self.tensor_height = self.tensor_shape[self.layout.get_index_by_name("height")]
+    def infer(self, frame: MatLike) -> np.ndarray:
+        """
+        Args:
+            original_image (np.ndarray): an image of shape (H, W, C) (in BGR order).
+                This is the format used by OpenCV.
 
-    def infer(self, mat: MatLike):
-        tensor = self._create_input_tensor(mat)
-        return self.compiled_model(tensor)[0]
-
-    def _create_input_tensor(self, mat: MatLike):
-        resized_mat = cv2.resize(mat, (self.tensor_width, self.tensor_height))
-        return ov.Tensor(
-            np.expand_dims(resized_mat.transpose(2, 0, 1).astype(np.float32), axis=0)
+        Returns:
+            predictions (np.ndarray): normalized feature of the model.
+        """
+        # the model expects RGB inputs
+        frame = frame[:, :, ::-1]
+        # Apply pre-processing to image.
+        image = cv2.resize(
+            frame,
+            tuple(self.cfg.INPUT.SIZE_TEST[::-1]),
+            interpolation=cv2.INTER_CUBIC,
         )
+        # Make shape with a new batch dimension which is adapted for
+        # network input
+        image = torch.as_tensor(image.astype("float32").transpose(2, 0, 1))[None]
+        predictions = self.predictor(image)
+        return normalize(predictions).data.numpy()
 
 
 def extract_embeddings(tracked_object: TrackedObject) -> list[np.ndarray | None]:
