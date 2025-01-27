@@ -10,7 +10,7 @@ from utils.drawing import (
     FloorPlanDrawer,
     GlobalFloorPlanDrawer,
     annotate,
-    draw_paused_frame,
+    draw_text_on_frame,
     preview_frame,
 )
 from utils.global_association import GlobalMatcher
@@ -80,7 +80,6 @@ def main() -> None:
     last_frames: dict[int, MatLike | None] = {}
     while True:
         if not paused or manual:
-            manual = False
             frames = [(cid, cap.read()) for cid, cap in enumerate(caps)]
             if any(frame is None for _, frame in frames):
                 break
@@ -96,6 +95,8 @@ def main() -> None:
                     annotate(frame, detections, tracked_objects), 0.3
                 )
                 last_frames[cid] = last_frame
+                if manual:
+                    draw_text_on_frame(last_frame, "Manual")
                 cv2.imshow(f"{MAIN_WINDOW_NAME}_{cid}", last_frame)
 
             global_objects = global_matcher.match(projections)
@@ -104,8 +105,13 @@ def main() -> None:
             global_frame = preview_frame(
                 global_floor_plan_drawer.draw(global_objects), 0.3
             )
+            if manual:
+                draw_text_on_frame(locals_frame, "Manual")
+                draw_text_on_frame(global_frame, "Manual")
             cv2.imshow("Locals", locals_frame)
             cv2.imshow("Global", global_frame)
+
+            manual = False
 
         fps.update()
         if not paused:
@@ -116,10 +122,10 @@ def main() -> None:
             paused = not paused
             if paused:
                 for cid, last_frame in last_frames.items():
-                    draw_paused_frame(last_frame)
+                    draw_text_on_frame(last_frame, "Paused")
                     cv2.imshow(f"{MAIN_WINDOW_NAME}_{cid}", last_frame)
-                draw_paused_frame(locals_frame)
-                draw_paused_frame(global_frame)
+                draw_text_on_frame(locals_frame, "Paused")
+                draw_text_on_frame(global_frame, "Paused")
                 cv2.imshow("Locals", locals_frame)
                 cv2.imshow("Global", global_frame)
         elif key_press == ord("e"):

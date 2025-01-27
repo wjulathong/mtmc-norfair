@@ -17,15 +17,40 @@ def preview_frame(frame: MatLike, sf: float) -> MatLike:
     return cv2.resize(frame, dsize=None, fx=sf, fy=sf, interpolation=cv2.INTER_AREA)
 
 
-def draw_paused_frame(frame: MatLike):
+def draw_text_on_frame(
+    frame: MatLike,
+    text: str,
+    position: str = "bottom-left",
+    font_scale: float = 1.0,
+    color: tuple[int, int, int] = (0, 0, 255),
+    thickness: int = 2,
+):
+    height, width = frame.shape[:2]
+    font_face = cv2.FONT_HERSHEY_SIMPLEX
+    if position == "top-left":
+        text_size = cv2.getTextSize(text, font_face, font_scale, thickness)[0]
+        coordinate = (10, 10 + text_size[1])
+    elif position == "top-left":
+        text_size = cv2.getTextSize(text, font_face, font_scale, thickness)[0]
+        coordinate = (width - text_size[0] - 10, 10 + text_size[1])
+    elif position == "bottom-left":
+        coordinate = (10, height - 10)
+    elif position == "bottom-right":
+        text_size = cv2.getTextSize(text, font_face, font_scale, thickness)[0]
+        coordinate = (width - text_size[0] - 10, height - 10)
+    else:
+        raise ValueError(
+            "Invalid position. Choose from 'top-left', 'top-right', 'bottom-left', or 'bottom-right'."
+        )
+
     cv2.putText(
         frame,
-        "Paused",
-        (10, frame.shape[0] - 10),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        1,
-        (0, 0, 255),
-        2,
+        text,
+        coordinate,
+        font_face,
+        font_scale,
+        color,
+        thickness,
     )
 
 
