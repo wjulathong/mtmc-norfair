@@ -130,6 +130,12 @@ def main() -> None:
                 cv2.imshow("Global", global_frame)
         elif key_press == ord("e"):
             manual = True
+        elif key_press == ord("d"):
+            print("\nprojections")
+            print(projections)
+            print("\nglobal_objects")
+            print(global_matcher.global_objects)
+            print()
         elif key_press == ord("l"):
             for cap in caps:
                 cap.seek_forward(10)
