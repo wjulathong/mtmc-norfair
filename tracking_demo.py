@@ -56,7 +56,10 @@ def main() -> None:
     rec = PersonRecognizer(REID_MODEL_PATH)
 
     caps = [FrameGetter(video_path, 5) for video_path in video_paths]
-    trks = [PersonTracker("euclidean", rec) for _ in video_paths]
+    trks = [
+        PersonTracker("euclidean", rec, reid_distance_threshold=0.3)
+        for _ in video_paths
+    ]
     homo_mats = [load_homography(path) for path in calibrated_paths]
     projections: dict[int, list[tuple[TrackedObject, np.ndarray]]] = {}
 

@@ -20,6 +20,9 @@ class LocalObject:
             and self.tracked_object.hit_counter_is_positive
         )
 
+    def is_dead(self):
+        return not self.tracked_object.reid_hit_counter_is_positive
+
     def get_embeddings(self, reid_model: PersonRecognizer):
         embeddings = extract_embeddings(self.tracked_object)
         if any(emb is None for emb in embeddings):
@@ -33,9 +36,20 @@ class GlobalObject:
     id: int
     cameras: dict[int, LocalObject] = field(default_factory=dict)
     position: np.ndarray | None = None
+    staled: bool = False
+
+    def update(self):
+        stale_cameras = [
+            cid for cid, local_obj in self.cameras.items() if local_obj.is_dead()
+        ]
+        for cid in stale_cameras:
+            del self.cameras[cid]
+
+        self.update_position()
 
     def update_position(self):
         if not self.cameras:
+            self.staled = True
             return
 
         positions = [obj.projected_position for obj in self.cameras.values()]
@@ -104,7 +118,15 @@ class GlobalMatcher:
 
         # Final position update for all global objects after all cameras are processed
         for global_obj in self.global_objects.values():
-            global_obj.update_position()
+            global_obj.update()
+
+        staled_objs = [
+            global_id
+            for global_id, global_obj in self.global_objects.items()
+            if global_obj.staled
+        ]
+        for global_id in staled_objs:
+            del self.global_objects[global_id]
 
         return self.get_active_objects()
 
@@ -178,7 +200,7 @@ class GlobalMatcher:
             # Update assignments
             local_obj.global_id = global_obj.id
             global_obj.cameras[camera_id] = local_obj
-            global_obj.update_position()
+            global_obj.update()
 
         # Create new global objects for remaining unmatched local objects
         for local_obj in local_list:
@@ -201,5 +223,5 @@ class GlobalMatcher:
         global_obj = GlobalObject(id=global_id)
         global_obj.cameras[camera_id] = local_obj
         local_obj.global_id = global_id
-        global_obj.update_position()
+        global_obj.update()
         self.global_objects[global_id] = global_obj
