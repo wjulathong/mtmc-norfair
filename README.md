@@ -31,6 +31,7 @@ Before running the scripts, ensure you have the following:
 - **Required Libraries:**
   - OpenCV
   - NumPy
+  - Scikit-learn
   - Ultralytics
   - PyTorch
   - OpenVINO
@@ -42,5 +43,5 @@ Before running the scripts, ensure you have the following:
 
 You can install the required libraries with the following command:
 ```bash
-pip install opencv-python numpy ultralytics torch torchvision openvino norfair supervision
+pip install opencv-python numpy scikit-learn ultralytics torch torchvision openvino norfair supervision
 ```
