@@ -181,15 +181,20 @@ class ThresholdAnalyzer:
 
         diff = match_hist - non_match_hist
         cross_points = np.where(diff[:-1] * diff[1:] <= 0)[0]
+        mean_midpoint = (np.mean(match_distances) + np.mean(non_match_distances)) / 2
 
         if not cross_points.size:
-            return (np.mean(match_distances) + np.mean(non_match_distances)) / 2
+            threshold = mean_midpoint
+        else:
+            best_cross_idx = cross_points[
+                np.argmin(np.abs(bin_edges[cross_points] - mean_midpoint))
+            ]
+            x1, x2 = bin_edges[best_cross_idx], bin_edges[best_cross_idx + 1]
+            y1, y2 = diff[best_cross_idx], diff[best_cross_idx + 1]
 
-        cross_idx = cross_points[0]
-        x1, x2 = bin_edges[cross_idx], bin_edges[cross_idx + 1]
-        y1, y2 = diff[cross_idx], diff[cross_idx + 1]
-
-        threshold = x1 + (x2 - x1) * (-y1) / (y2 - y1) if y1 != y2 else (x1 + x2) / 2
+            threshold = (
+                x1 + (x2 - x1) * (-y1) / (y2 - y1) if y1 != y2 else (x1 + x2) / 2
+            )
 
         return (
             threshold,
