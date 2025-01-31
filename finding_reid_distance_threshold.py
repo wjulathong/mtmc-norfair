@@ -46,8 +46,8 @@ def extract_person_id(filename: str) -> int:
 class EmbeddingProcessor:
     """Handle embedding creation and storage"""
 
-    def __init__(self, model_path: Path) -> None:
-        self.model = PersonRecognizer(model_path)
+    def __init__(self, model_name: str, model_path: Path) -> None:
+        self.model = PersonRecognizer(model_name, model_path)
 
     def create_embeddings(self, image_dir: Path, save_dir: Path) -> None:
         """Create and save embeddings from images"""
@@ -331,16 +331,15 @@ class ResultVisualizer:
 
 
 def main():
-    model_name = "openvino_smallest"
+    MODEL_NAME = "osnet_ain_x1_0"
+    model_name = f"torchreid_{MODEL_NAME}"
 
     # Initilize components
-    model_path = Path(
-        "./models/intel/person-reidentification-retail-0288/FP16/person-reidentification-retail-0288.xml"
-    )
-    processor = EmbeddingProcessor(model_path)
+    model_path = Path("./models/torchreid/osnet_ain_ms_d_c.pth.tar")
+    processor = EmbeddingProcessor(MODEL_NAME, model_path)
 
     # Setup paths
-    base_dir = Path("../mdx/Market-1501-v15.09.15").resolve()
+    base_dir = Path("../mdx/DukeMTMC-reID").resolve()
     query_dir = base_dir / "query"
     test_dir = base_dir / "bounding_box_test"
 

@@ -4,13 +4,14 @@ from typing import Callable
 
 import cv2
 import numpy as np
-import openvino as ov
 import supervision as sv
 from cv2.typing import MatLike
 from norfair import Detection, OptimizedKalmanFilterFactory, Tracker
 from norfair.tracker import TrackedObject
 from scipy.spatial.distance import cdist
 from ultralytics import YOLO
+
+from torchreid.utils.feature_extractor import FeatureExtractor
 
 
 class Detector:
@@ -32,26 +33,11 @@ class Detector:
 
 
 class PersonRecognizer:
-    def __init__(self, model_path: Path) -> None:
-        self.core = ov.Core()
-        self.model = self.core.read_model(model_path)
-        self.model.reshape([1, 3, 256, 128])
-        self.layout = ov.Layout("NCHW")
-        self.compiled_model = self.core.compile_model(self.model)
-
-        self.tensor_shape = self.compiled_model.input().shape
-        self.tensor_width = self.tensor_shape[self.layout.get_index_by_name("width")]
-        self.tensor_height = self.tensor_shape[self.layout.get_index_by_name("height")]
+    def __init__(self, model_name: str, model_path: Path) -> None:
+        self.model = FeatureExtractor(model_name, model_path, verbose=False)
 
     def infer(self, mat: MatLike):
-        tensor = self._create_input_tensor(mat)
-        return self.compiled_model(tensor)[0]
-
-    def _create_input_tensor(self, mat: MatLike):
-        resized_mat = cv2.resize(mat, (self.tensor_width, self.tensor_height))
-        return ov.Tensor(
-            np.expand_dims(resized_mat.transpose(2, 0, 1).astype(np.float32), axis=0)
-        )
+        return self.model(mat).numpy()
 
 
 def extract_embeddings(tracked_object: TrackedObject) -> list[np.ndarray | None]:
