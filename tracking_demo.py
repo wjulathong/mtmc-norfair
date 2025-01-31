@@ -34,11 +34,13 @@ def main() -> None:
 
     video_paths = [
         Path("../mdx/Building_K_Cam1.mp4"),
+        Path("../mdx/Building_K_Cam2.mp4"),
         Path("../mdx/Building_K_Cam6.mp4"),
         Path("../mdx/Building_K_Cam7.mp4"),
     ]
     calibrated_paths = [
         Path("./calibrated/Cam1.json"),
+        Path("./calibrated/Cam2.json"),
         Path("./calibrated/Cam6.json"),
         Path("./calibrated/Cam7.json"),
     ]

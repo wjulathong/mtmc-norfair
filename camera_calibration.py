@@ -8,7 +8,7 @@ from cv2.typing import MatLike
 
 FLOOR_PLAN_IMAGE_PATH = Path("../mdx/building=Nvidia-Bldg-K-Map.png")
 
-CAMERA_NAME = "Cam6"
+CAMERA_NAME = "Cam2"
 CAMERA_IMAGE_PATH = Path(f"../mdx/{CAMERA_NAME}_Image.png")
 HOMOGRAPHY_PATH = Path(f"./calibrated/{CAMERA_NAME}.json")
 
