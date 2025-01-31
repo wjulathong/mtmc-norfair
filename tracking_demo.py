@@ -138,6 +138,13 @@ def main() -> None:
             print(projections)
             print("\nglobal_objects")
             print(global_matcher.global_objects)
+            print("\nglobal -> locals")
+            for global_id, global_obj in global_matcher.global_objects.items():
+                local_objs = [
+                    f"{cid}_{lobj.tracked_object.id}"
+                    for cid, lobj in global_obj.cameras.items()
+                ]
+                print(f"{global_id} -> [{', '.join(local_objs)}]")
             print()
         elif key_press == ord("l"):
             for cap in caps:
