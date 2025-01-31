@@ -52,8 +52,19 @@ class GlobalObject:
             self.staled = True
             return
 
-        positions = [obj.projected_position for obj in self.cameras.values()]
-        self.position = np.mean(positions, axis=0)
+        positions = np.array([obj.projected_position for obj in self.cameras.values()])
+
+        if positions.shape[0] == 1:
+            self.position = positions[0]
+            return
+
+        hit_counters = np.array(
+            [obj.tracked_object.hit_counter for obj in self.cameras.values()]
+        )
+        weights = np.exp(0.1 * hit_counters)
+        norm_weights = weights / np.sum(weights)
+        position = np.sum(positions * norm_weights[:, None], axis=0)
+        self.position = position
 
     def get_embeddings(self, reid_model: PersonRecognizer):
         embeddings = []
