@@ -59,13 +59,13 @@ def main() -> None:
 
     caps = [FrameGetter(video_path, 5) for video_path in video_paths]
     trks = [
-        PersonTracker("euclidean", rec, reid_distance_threshold=0.3)
+        PersonTracker("euclidean", rec, reid_distance_threshold=0.45)
         for _ in video_paths
     ]
     homo_mats = [load_homography(path) for path in calibrated_paths]
     projections: dict[int, list[tuple[TrackedObject, np.ndarray]]] = {}
 
-    global_matcher = GlobalMatcher(rec)
+    global_matcher = GlobalMatcher(rec, reid_threshold=0.7)
 
     # Visualizer
     floor_plan_drawer = FloorPlanDrawer(
