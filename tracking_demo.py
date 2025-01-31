@@ -20,7 +20,7 @@ from utils.video import FPS, FrameGetter
 
 MAIN_WINDOW_NAME = "Camera"
 
-YOLO_MODEL_PATH = Path("./models/yolo11s.pt")
+YOLO_MODEL_PATH = Path("./models/yolo11m.pt")
 REID_MODEL_NAME = "person-reidentification-retail-0288"
 REID_MODEL_SIZE = "FP16"
 REID_MODEL_PATH = Path(
