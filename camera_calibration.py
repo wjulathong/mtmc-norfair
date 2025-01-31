@@ -13,6 +13,7 @@ CAMERA_IMAGE_PATH = Path(f"../mdx/{CAMERA_NAME}_Image.png")
 HOMOGRAPHY_PATH = Path(f"./calibrated/{CAMERA_NAME}.json")
 
 FIXED_PREVIEW_WIDTH = 1740
+FPS = 30
 
 
 def resize_fixed_width(img: MatLike, fixed_width: int):
@@ -197,11 +198,16 @@ def main() -> None:
     cv2.setMouseCallback("floor_plan", mouse_event, param=["floor_plan", app_data])
 
     while True:
+        timer = cv2.getTickCount()
+
         for winname in winnames:
             data: Data = app_data[winname]
             cv2.imshow(winname, resize_fixed_width(data["image"], FIXED_PREVIEW_WIDTH))
 
-        key_press = cv2.waitKey(1) & 0xFF
+        delay = (1000 // FPS) - int(
+            (cv2.getTickCount() - timer) / cv2.getTickFrequency() * 1000
+        )
+        key_press = cv2.waitKey(max(1, delay)) & 0xFF
         if key_press in (ord("c"), ord("s")):
             c_camera_points = len(app_data["camera"]["points"])
             c_floor_plan_points = len(app_data["floor_plan"]["points"])
