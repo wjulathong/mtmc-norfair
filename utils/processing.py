@@ -72,11 +72,9 @@ def embedding_distance(
     if not snd_embeddings or not fst_embeddings:
         return 2.0
 
-    emb_size = snd_embeddings[0].shape[1]
-    snd_embeddings = np.array(snd_embeddings).reshape(-1, emb_size)
-    fst_embeddings = np.array(fst_embeddings).reshape(-1, emb_size)
-
-    distances = cdist(snd_embeddings, fst_embeddings, metric="cosine")
+    distances = cdist(
+        np.vstack(snd_embeddings), np.vstack(fst_embeddings), metric="cosine"
+    )
     return np.min(distances)
 
 
@@ -89,12 +87,8 @@ def mean_embedding_distance(
     if not snd_embeddings or not fst_embeddings:
         return 2.0
 
-    emb_size = snd_embeddings[0].shape[1]
-    snd_embeddings = np.array(snd_embeddings).reshape(-1, emb_size)
-    fst_embeddings = np.array(fst_embeddings).reshape(-1, emb_size)
-
-    snd_embedding = np.mean(snd_embeddings, axis=0).reshape(1, -1)
-    fst_embedding = np.mean(fst_embeddings, axis=0).reshape(1, -1)
+    snd_embedding = np.mean(np.vstack(snd_embeddings), axis=0, keepdims=True)
+    fst_embedding = np.mean(np.vstack(fst_embeddings), axis=0, keepdims=True)
 
     return cdist(snd_embedding, fst_embedding, metric="cosine")[0, 0]
 

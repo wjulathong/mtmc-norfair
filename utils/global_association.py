@@ -103,10 +103,8 @@ class GlobalMatcher:
         ]
 
     def match(self, projections: dict[int, list[tuple[TrackedObject, np.ndarray]]]):
-        local_objects_by_camera: dict[int, dict[int, LocalObject]] = {}
-
         for cid, objs in projections.items():
-            local_objects = {}
+            local_objects: list[LocalObject] = []
             for obj, projected_position in objs:
                 local_obj = LocalObject(
                     tracked_object=obj,
@@ -122,9 +120,7 @@ class GlobalMatcher:
                         global_obj.cameras[cid] = local_obj
                         break
 
-                local_objects[obj.id] = local_obj
-            local_objects_by_camera[cid] = local_objects
-
+                local_objects.append(local_obj)
             self._match_camera(cid, local_objects)
 
         # Final position update for all global objects after all cameras are processed
@@ -141,45 +137,38 @@ class GlobalMatcher:
 
         return self.get_active_objects()
 
-    def _match_camera(self, camera_id: int, local_objects: dict[int, LocalObject]):
+    def _match_camera(self, camera_id: int, local_objects: list[LocalObject]):
         if not local_objects:
             return
 
         # Get all unmatched local objects
-        unmatched_locals = {
-            local_id: local_obj
-            for local_id, local_obj in local_objects.items()
-            if local_obj.global_id is None
-        }
+        unmatched_locals = [
+            local_obj for local_obj in local_objects if local_obj.global_id is None
+        ]
 
         if not unmatched_locals:
             return
 
         # If no existing global objects, create new ones for all unmatched objects
         if not self.global_objects:
-            for local_obj in unmatched_locals.values():
+            for local_obj in unmatched_locals:
                 self._create_new_global_object(local_obj, camera_id)
             return
 
-        # Prepare arrays for cost matrix
-        local_list = list(unmatched_locals.values())
-        global_list = list(self.global_objects.values())
-
-        n_local = len(local_list)
-        n_global = len(global_list)
+        global_objects = list(self.global_objects.values())
 
         # Calculate position distances
-        local_positions = [obj.projected_position for obj in local_list]
-        global_positions = [obj.position for obj in global_list]
+        local_positions = [obj.projected_position for obj in unmatched_locals]
+        global_positions = [obj.position for obj in global_objects]
         pos_distances = cdist(
             np.array(local_positions), np.array(global_positions), metric="euclidean"
         )
 
         # Calculate ReID distances using all available embeddings
-        reid_distances = np.zeros((n_local, n_global))
+        reid_distances = np.zeros((len(unmatched_locals), len(global_objects)))
 
-        for i, local_obj in enumerate(local_list):
-            for j, global_obj in enumerate(global_list):
+        for i, local_obj in enumerate(unmatched_locals):
+            for j, global_obj in enumerate(global_objects):
                 reid_distances[i, j] = self._compute_reid_distance(
                     local_obj.get_embeddings(self.reid_model),
                     global_obj.get_embeddings(self.reid_model),
@@ -201,31 +190,30 @@ class GlobalMatcher:
 
         # Process matches
         for local_idx, assign_idx in zip(local_indices, assignment_indices):
+            local_idx: int
+            assign_idx: int
             # Skip invalid matches (those with high cost)
             if cost_matrix[local_idx, assign_idx] >= 1000.0:
                 continue
 
-            local_obj = local_list[local_idx]
-            global_obj = global_list[assign_idx]
+            local_obj = unmatched_locals[local_idx]
+            global_obj = global_objects[assign_idx]
 
             # Update assignments
             local_obj.global_id = global_obj.id
             global_obj.cameras[camera_id] = local_obj
-            global_obj.update()
 
         # Create new global objects for remaining unmatched local objects
-        for local_obj in local_list:
+        for local_obj in unmatched_locals:
             if local_obj.global_id is None:
                 self._create_new_global_object(local_obj, camera_id)
 
     def _compute_reid_distance(
         self, local_embeddings: list[np.ndarray], global_embeddings: list[np.ndarray]
     ):
-        emb_size = local_embeddings[0].shape[1]
-        local_embeddings_array = np.array(local_embeddings).reshape(-1, emb_size)
-        global_embeddings_array = np.array(global_embeddings).reshape(-1, emb_size)
+        # Compute single ReID distance between two objects
         distances = cdist(
-            local_embeddings_array, global_embeddings_array, metric="cosine"
+            np.vstack(local_embeddings), np.vstack(global_embeddings), metric="cosine"
         )
         return np.min(distances)
 
@@ -234,5 +222,4 @@ class GlobalMatcher:
         global_obj = GlobalObject(id=global_id)
         global_obj.cameras[camera_id] = local_obj
         local_obj.global_id = global_id
-        global_obj.update()
         self.global_objects[global_id] = global_obj
