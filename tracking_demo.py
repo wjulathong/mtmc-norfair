@@ -66,7 +66,7 @@ def main() -> None:
     homo_mats = [load_homography(path) for path in calibrated_paths]
     projections: dict[int, list[tuple[TrackedObject, np.ndarray]]] = {}
 
-    global_matcher = GlobalMatcher(rec, reid_threshold=0.7)
+    global_matcher = GlobalMatcher(rec, reid_threshold=(0.45, 0.7))
 
     # Visualizer
     floor_plan_drawer = FloorPlanDrawer(

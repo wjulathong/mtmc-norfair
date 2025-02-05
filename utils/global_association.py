@@ -74,10 +74,12 @@ class GlobalObject:
 
 
 class GlobalMatcher:
+    INVALID_COST: float = 1000.0
+
     def __init__(
         self,
         reid_model: PersonRecognizer,
-        reid_threshold: float = 0.7,
+        reid_threshold: float | tuple[float, float] = 0.7,
         pos_threshold: float = 200.0,
         reid_weight: float = 0.5,
         pos_weight: float = 0.5,
@@ -157,43 +159,127 @@ class GlobalMatcher:
 
         global_objects = list(self.global_objects.values())
 
+        # Check for two stages threshold
+        # Stage 1: Confidence ReID
+        if isinstance(self.reid_threshold, tuple):
+            reid_distances = self._compute_reid_distances(
+                unmatched_locals, global_objects
+            )
+            cost_matrix = reid_distances / self.reid_threshold[0]
+            cost_matrix[reid_distances > self.reid_threshold[0]] = self.INVALID_COST
+        else:
+            pos_distances, reid_distances = self._calculate_distances(
+                unmatched_locals, global_objects
+            )
+            cost_matrix = self._compute_cost_matrix(
+                pos_distances,
+                reid_distances,
+                self.pos_threshold,
+                self.reid_threshold,
+                self.pos_weight,
+                self.reid_weight,
+            )
+
+        matched_local_indices = self._process_matches(
+            camera_id, unmatched_locals, global_objects, cost_matrix
+        )
+
+        # Stage 2: Lower confidence ReID with position
+        unmatched_locals = [
+            local_obj
+            for i, local_obj in enumerate(unmatched_locals)
+            if i not in matched_local_indices
+        ]
+
+        if isinstance(self.reid_threshold, tuple) and unmatched_locals:
+            pos_distances, reid_distances = self._calculate_distances(
+                unmatched_locals,
+                global_objects,
+            )
+            cost_matrix = self._compute_cost_matrix(
+                pos_distances,
+                reid_distances,
+                self.pos_threshold,
+                self.reid_threshold[1],
+                self.pos_weight,
+                self.reid_weight,
+            )
+            matched_local_indices = self._process_matches(
+                camera_id, unmatched_locals, global_objects, cost_matrix
+            )
+            unmatched_locals = [
+                local_obj
+                for i, local_obj in enumerate(unmatched_locals)
+                if i not in matched_local_indices
+            ]
+
+        # Create new global objects for remaining unmatched local objects
+        for local_obj in unmatched_locals:
+            if local_obj.global_id is None:
+                self._create_new_global_object(local_obj, camera_id)
+
+    def _calculate_distances(
+        self, unmatched_locals: list[LocalObject], global_objects: list[GlobalObject]
+    ):
         # Calculate position distances
         local_positions = [obj.projected_position for obj in unmatched_locals]
         global_positions = [obj.position for obj in global_objects]
         pos_distances = cdist(
             np.array(local_positions), np.array(global_positions), metric="euclidean"
         )
+        reid_distances = self._compute_reid_distances(unmatched_locals, global_objects)
+        return pos_distances, reid_distances
 
+    def _compute_reid_distances(
+        self, unmatched_locals: list[LocalObject], global_objects: list[GlobalObject]
+    ) -> np.ndarray:
         # Calculate ReID distances using all available embeddings
         reid_distances = np.zeros((len(unmatched_locals), len(global_objects)))
-
         for i, local_obj in enumerate(unmatched_locals):
             for j, global_obj in enumerate(global_objects):
                 reid_distances[i, j] = self._compute_reid_distance(
                     local_obj.get_embeddings(self.reid_model),
                     global_obj.get_embeddings(self.reid_model),
                 )
+        return reid_distances
 
+    def _compute_cost_matrix(
+        self,
+        pos_distances: np.ndarray,
+        reid_distances: np.ndarray,
+        pos_threshold: float,
+        reid_threshold: float,
+        pos_weight: float,
+        reid_weight: float,
+    ):
         # Combine distances with weights
-        cost_matrix = self.pos_weight * (
-            pos_distances / self.pos_threshold
-        ) + self.reid_weight * (reid_distances / self.reid_threshold)
-
-        # Mark invalid matches with a high cost
-        invalid_matches = (pos_distances > self.pos_threshold) | (
-            reid_distances > self.reid_threshold
+        cost_matrix = pos_weight * (pos_distances / pos_threshold) + reid_weight * (
+            reid_distances / reid_threshold
         )
-        cost_matrix[invalid_matches] = 1000.0
+        # Mark invalid matches with a high cost
+        invalid_matches = (pos_distances > pos_threshold) | (
+            reid_distances > reid_threshold
+        )
+        cost_matrix[invalid_matches] = self.INVALID_COST
+        return cost_matrix
 
+    def _process_matches(
+        self,
+        camera_id: int,
+        unmatched_locals: list[LocalObject],
+        global_objects: list[GlobalObject],
+        cost_matrix: np.ndarray,
+    ):
         # Apply Hungarian algorithm
         local_indices, assignment_indices = linear_sum_assignment(cost_matrix)
 
+        matched_local_indices: list[int] = []
         # Process matches
         for local_idx, assign_idx in zip(local_indices, assignment_indices):
             local_idx: int
             assign_idx: int
             # Skip invalid matches (those with high cost)
-            if cost_matrix[local_idx, assign_idx] >= 1000.0:
+            if cost_matrix[local_idx, assign_idx] >= self.INVALID_COST:
                 continue
 
             local_obj = unmatched_locals[local_idx]
@@ -202,11 +288,8 @@ class GlobalMatcher:
             # Update assignments
             local_obj.global_id = global_obj.id
             global_obj.cameras[camera_id] = local_obj
-
-        # Create new global objects for remaining unmatched local objects
-        for local_obj in unmatched_locals:
-            if local_obj.global_id is None:
-                self._create_new_global_object(local_obj, camera_id)
+            matched_local_indices.append(local_idx)
+        return matched_local_indices
 
     def _compute_reid_distance(
         self, local_embeddings: list[np.ndarray], global_embeddings: list[np.ndarray]
