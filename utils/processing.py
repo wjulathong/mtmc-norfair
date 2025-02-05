@@ -14,7 +14,7 @@ from ultralytics import YOLO
 
 
 class Detector:
-    def __init__(self, model_path: Path, edge_margin: int = 20) -> None:
+    def __init__(self, model_path: Path, edge_margin: int = 10) -> None:
         self.model = YOLO(model_path)
         self.edge_margin = edge_margin
 
