@@ -1,4 +1,5 @@
 from pathlib import Path
+from pprint import pprint
 
 import cv2
 import numpy as np
@@ -137,9 +138,9 @@ def main() -> None:
             manual = True
         elif key_press == ord("d"):
             print("\nprojections")
-            print(projections)
+            pprint(projections)
             print("\nglobal_objects")
-            print(global_matcher.global_objects)
+            pprint(global_matcher.global_objects)
             print("\nglobal -> locals")
             for global_id, global_obj in global_matcher.global_objects.items():
                 local_objs = [
