@@ -21,6 +21,7 @@ class FrameGetter:
         self.cap = cv2.VideoCapture(str(video_path))
         self.fps = self.cap.get(cv2.CAP_PROP_FPS)
         self.target_fps = target_fps or self.fps
+        self.current_frame = 0
 
         if self.target_fps <= 0 or self.target_fps > self.fps:
             raise ValueError(
@@ -29,7 +30,8 @@ class FrameGetter:
 
         self.frames_to_skip = int(self.fps / self.target_fps) - 1
 
-    def read(self) -> MatLike | None:
+    def read(self) -> tuple[int, MatLike] | None:
+        current_frame = self.current_frame
         ret, frame = self.cap.read()
         if not ret:
             return None
@@ -37,7 +39,9 @@ class FrameGetter:
         for _ in range(self.frames_to_skip):
             self.cap.read()
 
-        return frame
+        self.current_frame += self.frames_to_skip + 1
+
+        return current_frame, frame
 
     def seek_forward(self, sec: int):
         current_frame = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))

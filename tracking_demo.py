@@ -64,7 +64,7 @@ def main() -> None:
         for _ in video_paths
     ]
     homo_mats = [load_homography(path) for path in calibrated_paths]
-    projections: dict[int, list[tuple[TrackedObject, np.ndarray]]] = {}
+    projections: dict[int, tuple[list[TrackedObject, list[np.ndarray]]]] = {}
 
     global_matcher = GlobalMatcher(rec, reid_threshold=(0.45, 0.7))
 
@@ -86,17 +86,19 @@ def main() -> None:
     last_frames: dict[int, MatLike | None] = {}
     while True:
         if not paused or manual:
-            frames = [(cid, cap.read()) for cid, cap in enumerate(caps)]
-            if any(frame is None for _, frame in frames):
+            frames = [(cid, *cap.read()) for cid, cap in enumerate(caps)]
+            if any(frame is None for _, _, frame in frames):
                 break
 
-            for cid, frame in frames:
+            for cid, frame_time, frame in frames:
                 detections = det.detect(frame)
                 obj_mats: list[MatLike] = [
                     crop_image(frame, xyxy) for xyxy in detections.xyxy
                 ]
                 tracked_objects = trks[cid].update(detections, obj_mats)
-                projections[cid] = project_points(tracked_objects, homo_mats[cid])
+                projected_points = project_points(tracked_objects, homo_mats[cid])
+                projections[cid] = (tracked_objects, projected_points)
+                global_matcher.match(cid, frame_time, tracked_objects, projected_points)
                 last_frame = preview_frame(
                     annotate(frame, detections, tracked_objects), 0.3
                 )
@@ -105,7 +107,7 @@ def main() -> None:
                     draw_text_on_frame(last_frame, "Manual")
                 cv2.imshow(f"{MAIN_WINDOW_NAME}_{cid}", last_frame)
 
-            global_objects = global_matcher.match(projections)
+            global_objects = global_matcher.get_active_objects()
 
             locals_frame = preview_frame(floor_plan_drawer.draw(projections), 0.3)
             global_frame = preview_frame(
@@ -142,12 +144,12 @@ def main() -> None:
             print("\nglobal_objects")
             pprint(global_matcher.global_objects)
             print("\nglobal -> locals")
-            for global_id, global_obj in global_matcher.global_objects.items():
+            for global_obj in global_matcher.global_objects.values():
                 local_objs = [
                     f"{cid}_{lobj.tracked_object.id}"
                     for cid, lobj in global_obj.cameras.items()
                 ]
-                print(f"{global_id} -> [{', '.join(local_objs)}]")
+                print(f"{global_obj.id} -> [{', '.join(local_objs)}]")
             print()
         elif key_press == ord("l"):
             for cap in caps:

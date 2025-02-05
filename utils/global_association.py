@@ -12,6 +12,7 @@ from .processing import PersonRecognizer, extract_embeddings, infer_embeddings
 class LocalObject:
     tracked_object: TrackedObject
     projected_position: np.ndarray
+    frame_time: int
     global_id: int | None = None
 
     def is_active(self):
@@ -20,8 +21,8 @@ class LocalObject:
             and self.tracked_object.hit_counter_is_positive
         )
 
-    def is_dead(self):
-        return not self.tracked_object.reid_hit_counter_is_positive
+    def is_dead(self, current_time: int):
+        return current_time > self.frame_time and not self.is_active()
 
     def get_embeddings(self, reid_model: PersonRecognizer):
         embeddings = extract_embeddings(self.tracked_object)
@@ -34,24 +35,21 @@ class LocalObject:
 @dataclass(slots=True)
 class GlobalObject:
     id: int
+    last_frame_time: int
     cameras: dict[int, LocalObject] = field(default_factory=dict)
     position: np.ndarray | None = None
     staled: bool = False
 
-    def update(self):
-        stale_cameras = [
-            cid for cid, local_obj in self.cameras.items() if local_obj.is_dead()
-        ]
-        for cid in stale_cameras:
-            del self.cameras[cid]
-
-        self.update_position()
+    def update(self, current_time: int):
+        if all(local_obj.is_dead(current_time) for local_obj in self.cameras.values()):
+            if current_time - self.last_frame_time >= 1800:  # TODO: To be configurable
+                self.staled = True
+            return
+        else:
+            self.last_frame_time = current_time
+            self.update_position()
 
     def update_position(self):
-        if not self.cameras:
-            self.staled = True
-            return
-
         positions = np.array([obj.projected_position for obj in self.cameras.values()])
 
         if positions.shape[0] == 1:
@@ -104,42 +102,46 @@ class GlobalMatcher:
             if any(local_obj.is_active() for local_obj in global_obj.cameras.values())
         ]
 
-    def match(self, projections: dict[int, list[tuple[TrackedObject, np.ndarray]]]):
-        for cid, objs in projections.items():
-            local_objects: list[LocalObject] = []
-            for obj, projected_position in objs:
-                local_obj = LocalObject(
-                    tracked_object=obj,
-                    projected_position=projected_position,
-                )
+    def match(
+        self,
+        camera_id: int,
+        current_time: int,
+        tracked_objects: list[TrackedObject],
+        projected_positions: list[np.ndarray],
+    ):
+        local_objects: list[LocalObject] = []
+        for obj, pos in zip(tracked_objects, projected_positions):
+            local_obj = LocalObject(
+                tracked_object=obj,
+                projected_position=pos,
+                frame_time=current_time,
+            )
+            for global_obj in self.global_objects.values():
+                if (
+                    camera_id in global_obj.cameras
+                    and global_obj.cameras[camera_id].tracked_object.id == obj.id
+                ):
+                    local_obj.global_id = global_obj.id
+                    global_obj.cameras[camera_id] = local_obj
+                    break
+            local_objects.append(local_obj)
 
-                for global_obj in self.global_objects.values():
-                    if (
-                        cid in global_obj.cameras
-                        and global_obj.cameras[cid].tracked_object.id == obj.id
-                    ):
-                        local_obj.global_id = global_obj.id
-                        global_obj.cameras[cid] = local_obj
-                        break
+        self._match_camera(camera_id, current_time, local_objects)
 
-                local_objects.append(local_obj)
-            self._match_camera(cid, local_objects)
-
-        # Final position update for all global objects after all cameras are processed
         for global_obj in self.global_objects.values():
-            global_obj.update()
+            global_obj.update(current_time)
 
         staled_objs = [
-            global_id
-            for global_id, global_obj in self.global_objects.items()
+            global_obj.id
+            for global_obj in self.global_objects.values()
             if global_obj.staled
         ]
         for global_id in staled_objs:
             del self.global_objects[global_id]
 
-        return self.get_active_objects()
-
-    def _match_camera(self, camera_id: int, local_objects: list[LocalObject]):
+    def _match_camera(
+        self, camera_id: int, current_time: int, local_objects: list[LocalObject]
+    ):
         if not local_objects:
             return
 
@@ -149,12 +151,13 @@ class GlobalMatcher:
         ]
 
         if not unmatched_locals:
+            # TODO: Refinded matched objects
             return
 
         # If no existing global objects, create new ones for all unmatched objects
         if not self.global_objects:
             for local_obj in unmatched_locals:
-                self._create_new_global_object(local_obj, camera_id)
+                self._create_new_global_object(local_obj, camera_id, current_time)
             return
 
         global_objects = list(self.global_objects.values())
@@ -216,7 +219,7 @@ class GlobalMatcher:
         # Create new global objects for remaining unmatched local objects
         for local_obj in unmatched_locals:
             if local_obj.global_id is None:
-                self._create_new_global_object(local_obj, camera_id)
+                self._create_new_global_object(local_obj, camera_id, current_time)
 
     def _calculate_distances(
         self, unmatched_locals: list[LocalObject], global_objects: list[GlobalObject]
@@ -300,9 +303,10 @@ class GlobalMatcher:
         )
         return np.min(distances)
 
-    def _create_new_global_object(self, local_obj: LocalObject, camera_id: int):
+    def _create_new_global_object(
+        self, local_obj: LocalObject, camera_id: int, current_time: int
+    ):
         global_id = self._get_new_global_id()
-        global_obj = GlobalObject(id=global_id)
+        global_obj = GlobalObject(id=global_id, last_frame_time=current_time)
         global_obj.cameras[camera_id] = local_obj
-        local_obj.global_id = global_id
         self.global_objects[global_id] = global_obj

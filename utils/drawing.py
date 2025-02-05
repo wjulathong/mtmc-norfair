@@ -131,11 +131,11 @@ class BaseFloorPlanDrawer:
 
 class FloorPlanDrawer(BaseFloorPlanDrawer):
     def draw(
-        self, projections: dict[int, list[tuple[TrackedObject, np.ndarray]]]
+        self, projections: dict[int, tuple[list[TrackedObject], list[np.ndarray]]]
     ) -> MatLike:
         viz = self.floor_plan.copy()
-        for cid, tracked_objects in projections.items():
-            for obj, point in tracked_objects:
+        for cid, (tracked_objects, projected_points) in projections.items():
+            for obj, point in zip(tracked_objects, projected_points):
                 color = Palette.choose_color(obj.id)
                 point = self._transform_point(point)
                 self.history.setdefault(cid, {}).setdefault(

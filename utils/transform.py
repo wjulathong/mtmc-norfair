@@ -14,7 +14,7 @@ def load_homography(calibration_path: Path) -> np.ndarray:
 
 def project_points(
     tracked_objects: list[TrackedObject], homography: np.ndarray
-) -> list[tuple[TrackedObject, np.ndarray]]:
+) -> list[np.ndarray]:
     if not tracked_objects:
         return []
 
@@ -26,7 +26,7 @@ def project_points(
     projected_points = homography @ homogeneous_points.T
     projected_points /= projected_points[2]
     projected_points = projected_points[:2].T
-    return list(zip(tracked_objects, projected_points))
+    return list(projected_points)
 
 
 def prepare_floor_plan(floor_plan: MatLike, scale: float) -> tuple[MatLike, np.ndarray]:
