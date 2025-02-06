@@ -17,6 +17,57 @@ def preview_frame(frame: MatLike, sf: float) -> MatLike:
     return cv2.resize(frame, dsize=None, fx=sf, fy=sf, interpolation=cv2.INTER_AREA)
 
 
+def resize_fixed_height(img: MatLike, fixed_height: int):
+    aspect_ratio = img.shape[0] / img.shape[1]
+    new_width = int(fixed_height / aspect_ratio)
+    return cv2.resize(img, (new_width, fixed_height), interpolation=cv2.INTER_AREA)
+
+
+def debug_detections(cropped_images: list[MatLike]) -> MatLike:
+    final_image: MatLike | None = None
+    for i, img in enumerate(cropped_images):
+        img = draw_text_on_frame(img.copy(), f"{i}", "top-left", font_scale=0.5)
+        if final_image is None:
+            final_image = img
+        else:
+            scale = final_image.shape[0] / img.shape[0]
+            final_image = cv2.hconcat(
+                (
+                    final_image,
+                    cv2.resize(img, (int(img.shape[1] * scale), final_image.shape[0])),
+                )
+            )
+    return final_image
+
+
+def debug_camera(imgs: list[tuple[int, MatLike]]) -> MatLike:
+    final_image: MatLike | None = None
+    for i, img in imgs:
+        img = draw_text_on_frame(
+            img.copy(), f"{i}", "bottom-right", font_scale=0.8, color=(0, 255, 0)
+        )
+        if final_image is None:
+            final_image = img
+        else:
+            shapes = np.array((final_image.shape[:2], img.shape[:2]))
+            target_width = np.max(shapes[:, 1])
+            scales = target_width / shapes[:, 1]
+            new_shapes = np.stack(
+                (
+                    np.repeat([target_width], 2),
+                    (shapes[:, 0] * scales).astype(int),
+                ),
+                axis=1,
+            )
+            final_image = cv2.vconcat(
+                (
+                    cv2.resize(final_image, tuple(new_shapes[0])),
+                    cv2.resize(img, tuple(new_shapes[1])),
+                )
+            )
+    return final_image
+
+
 def draw_text_on_frame(
     frame: MatLike,
     text: str,
@@ -43,7 +94,7 @@ def draw_text_on_frame(
             "Invalid position. Choose from 'top-left', 'top-right', 'bottom-left', or 'bottom-right'."
         )
 
-    cv2.putText(
+    return cv2.putText(
         frame,
         text,
         coordinate,
@@ -158,5 +209,7 @@ class GlobalFloorPlanDrawer(BaseFloorPlanDrawer):
             )
 
             self._draw_history(viz, self.history[obj.id], color)
-            self._draw_point(viz, point, color, f"{obj.id}")
+            self._draw_point(
+                viz, point, color, f"{obj.id}" if obj.is_active() else f"IA: {obj.id}"
+            )
         return viz

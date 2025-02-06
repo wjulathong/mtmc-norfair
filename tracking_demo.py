@@ -1,5 +1,7 @@
 from pathlib import Path
 from pprint import pprint
+from types import GenericAlias
+from typing import Sequence
 
 import cv2
 import numpy as np
@@ -11,8 +13,11 @@ from utils.drawing import (
     FloorPlanDrawer,
     GlobalFloorPlanDrawer,
     annotate,
+    debug_camera,
+    debug_detections,
     draw_text_on_frame,
     preview_frame,
+    resize_fixed_height,
 )
 from utils.global_association import GlobalMatcher
 from utils.processing import Detector, PersonRecognizer, PersonTracker
@@ -29,21 +34,66 @@ REID_MODEL_PATH = Path(
 )
 
 
+def get_input[T](prompt: str, _type: type[T]) -> T:
+    input_str = input(prompt)
+    if isinstance(_type, GenericAlias):
+        if _type.__origin__ is list:
+            if len(_type.__args__) != 1:
+                raise TypeError("type of 'list' only allow single type")
+            elem_type = _type.__args__[0]
+            if isinstance(elem_type, GenericAlias):
+                raise TypeError(
+                    f"no '{elem_type.__origin__.__name__}' allowed inside 'list'"
+                )
+            elif issubclass(elem_type, str):
+                return input_str.split()
+            elif issubclass(elem_type, Sequence):
+                raise TypeError(f"no '{elem_type.__name__}' allowed inside 'list'")
+            else:
+                return list(elem_type(token) for token in input_str.split())
+        elif _type.__origin__ is tuple:
+            elem_types = _type.__args__
+            tokens = input_str.split()
+            if len(elem_types) != len(tokens):
+                raise TypeError(f"length of '{_type}' != {len(tokens)}")
+            results = []
+            for elem_type, token in zip(elem_types, tokens):
+                if isinstance(elem_type, GenericAlias):
+                    raise TypeError(
+                        f"no '{elem_type.__origin__.__name__}' allowed inside 'tuple'"
+                    )
+                elif issubclass(elem_type, str):
+                    results.append(token)
+                elif issubclass(elem_type, Sequence):
+                    raise TypeError(f"no '{elem_type.__name__}' allowed inside 'tuple'")
+                else:
+                    results.append(elem_type(token))
+            return tuple(results)
+        else:
+            raise NotImplementedError
+    elif issubclass(_type, str):
+        return input_str
+    elif issubclass(_type, Sequence):
+        raise TypeError(f"type of '{_type.__name__}' needs to its type annotated")
+    else:
+        return _type(input_str)
+
+
 def main() -> None:
     floor_plan = cv2.imread(str(Path("../mdx/building=Nvidia-Bldg-K-Map.png")))
     scaled_floor_plan, transform_matrix = prepare_floor_plan(floor_plan, 1.5)
 
     video_paths = [
-        Path("../mdx/Building_K_Cam1.mp4"),
+        # Path("../mdx/Building_K_Cam1.mp4"),
         Path("../mdx/Building_K_Cam2.mp4"),
-        Path("../mdx/Building_K_Cam6.mp4"),
-        Path("../mdx/Building_K_Cam7.mp4"),
+        # Path("../mdx/Building_K_Cam6.mp4"),
+        # Path("../mdx/Building_K_Cam7.mp4"),
     ]
     calibrated_paths = [
-        Path("./calibrated/Cam1.json"),
+        # Path("./calibrated/Cam1.json"),
         Path("./calibrated/Cam2.json"),
-        Path("./calibrated/Cam6.json"),
-        Path("./calibrated/Cam7.json"),
+        # Path("./calibrated/Cam6.json"),
+        # Path("./calibrated/Cam7.json"),
     ]
     for path in video_paths:
         assert path.exists()
@@ -60,7 +110,14 @@ def main() -> None:
 
     caps = [FrameGetter(video_path, 5) for video_path in video_paths]
     trks = [
-        PersonTracker("euclidean", rec, reid_distance_threshold=0.45)
+        PersonTracker(
+            "euclidean",
+            rec,
+            hit_counter_max=0,
+            distance_threshold=40.0,
+            reid_distance_threshold=0.45,
+            reid_hit_counter_max=50,
+        )
         for _ in video_paths
     ]
     homo_mats = [load_homography(path) for path in calibrated_paths]
@@ -107,7 +164,7 @@ def main() -> None:
                     draw_text_on_frame(last_frame, "Manual")
                 cv2.imshow(f"{MAIN_WINDOW_NAME}_{cid}", last_frame)
 
-            global_objects = global_matcher.get_active_objects()
+            global_objects = global_matcher.get_all_objects()
 
             locals_frame = preview_frame(floor_plan_drawer.draw(projections), 0.3)
             global_frame = preview_frame(
@@ -120,6 +177,18 @@ def main() -> None:
             cv2.imshow("Global", global_frame)
 
             manual = False
+
+        all_imgs = []
+        for t_obj in trks[0].tracker.tracked_objects:
+            if t_obj.id is None:
+                continue
+            imgs = [t_obj.last_detection.data["cropped"]]
+            imgs.extend([pd.data["cropped"] for pd in t_obj.past_detections])
+            all_imgs.append((t_obj.id, debug_detections(imgs)))
+        if all_imgs:
+            cv2.imshow(
+                f"croppeds_{0}", resize_fixed_height(debug_camera(all_imgs), 960)
+            )
 
         fps.update()
         if not paused:
@@ -150,7 +219,38 @@ def main() -> None:
                     for cid, lobj in global_obj.cameras.items()
                 ]
                 print(f"{global_obj.id} -> [{', '.join(local_objs)}]")
+                global_obj.calculate_distances(rec)
             print()
+        elif key_press == ord("x"):
+            try:
+                idx = get_input("Select CameraID: ", int)
+                all_imgs = []
+                for t_obj in trks[idx].tracker.tracked_objects:
+                    imgs = [t_obj.last_detection.data["cropped"]]
+                    imgs.extend([pd.data["cropped"] for pd in t_obj.past_detections])
+                    all_imgs.append((t_obj.id, debug_detections(imgs)))
+                cv2.imshow(f"croppeds_{idx}", debug_camera(all_imgs))
+            except Exception as e:
+                print(e)
+        elif key_press == ord("s"):
+            try:
+                indices = get_input("Select (GlobalID CameraID): ", tuple[int, int])
+                imgs = [
+                    global_matcher.global_objects[indices[0]]
+                    .cameras[indices[1]]
+                    .tracked_object.last_detection.data["cropped"]
+                ]
+                imgs.extend(
+                    [
+                        pd.data["cropped"]
+                        for pd in global_matcher.global_objects[indices[0]]
+                        .cameras[indices[1]]
+                        .tracked_object.past_detections
+                    ]
+                )
+                cv2.imshow("cropped", debug_detections(imgs))
+            except Exception as e:
+                print(e)
         elif key_press == ord("l"):
             for cap in caps:
                 cap.seek_forward(10)

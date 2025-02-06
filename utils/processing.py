@@ -153,6 +153,7 @@ class PersonTracker:
         matched_not_init_trackers: TrackedObject,
         unmatched_trackers: TrackedObject,
     ):
+        print(f"Need ReID: {matched_not_init_trackers.id} -> {unmatched_trackers.id}")
         infer_embeddings(reid_model, matched_not_init_trackers)
         infer_embeddings(reid_model, unmatched_trackers)
         return embedding_distance(matched_not_init_trackers, unmatched_trackers)

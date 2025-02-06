@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from itertools import combinations
 
 import numpy as np
 from norfair.tracker import TrackedObject
@@ -74,6 +75,25 @@ class GlobalObject:
         for local_obj in self.cameras.values():
             embeddings.extend(local_obj.get_embeddings(reid_model))
         return embeddings
+
+    def calculate_distances(self, reid_model: PersonRecognizer):
+        local_objects = list(self.cameras.items())
+        local_embeddings: list[list[np.ndarray]] = [
+            local_obj.get_embeddings(reid_model) for _, local_obj in local_objects
+        ]
+        for ((a_cid, a_obj), a_embs), ((b_cid, b_obj), b_embs) in combinations(
+            zip(local_objects, local_embeddings), 2
+        ):
+            print(f"    Camera: {a_cid} <-> {b_cid}")
+            pos_dist = cdist(
+                a_obj.projected_position[None, :],
+                b_obj.projected_position[None, :],
+                metric="euclidean",
+            )[0, 0]
+            reid_dist = np.min(
+                cdist(np.vstack(a_embs), np.vstack(b_embs), metric="cosine")
+            )
+            print(f"    {pos_dist:.2f} {reid_dist:.2f}")
 
 
 class GlobalMatcher:
