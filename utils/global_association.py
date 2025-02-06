@@ -40,6 +40,11 @@ class GlobalObject:
     position: np.ndarray | None = None
     staled: bool = False
 
+    def is_active(self):
+        return not self.staled and any(
+            local_obj.is_active() for local_obj in self.cameras.values()
+        )
+
     def update(self, current_time: int):
         if all(local_obj.is_dead(current_time) for local_obj in self.cameras.values()):
             if current_time - self.last_frame_time >= 1800:  # TODO: To be configurable
@@ -95,11 +100,14 @@ class GlobalMatcher:
         self.global_id_counter += 1
         return global_id
 
+    def get_all_objects(self):
+        return [global_obj for global_obj in self.global_objects.values()]
+
     def get_active_objects(self):
         return [
             global_obj
             for global_obj in self.global_objects.values()
-            if any(local_obj.is_active() for local_obj in global_obj.cameras.values())
+            if global_obj.is_active()
         ]
 
     def match(
