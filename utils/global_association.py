@@ -59,7 +59,7 @@ class GlobalObject:
         hit_counters = np.array(
             [obj.tracked_object.hit_counter for obj in self.cameras.values()]
         )
-        weights = np.exp(0.1 * hit_counters)
+        weights = np.exp(0.5 * hit_counters)
         norm_weights = weights / np.sum(weights)
         position = np.sum(positions * norm_weights[:, None], axis=0)
         self.position = position
