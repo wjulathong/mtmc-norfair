@@ -20,6 +20,7 @@ class LocalObject:
         return (
             not self.tracked_object.is_initializing
             and self.tracked_object.hit_counter_is_positive
+            and self.tracked_object.reid_hit_counter_is_positive
         )
 
     def is_dead(self, current_time: int):
