@@ -192,31 +192,26 @@ class GlobalMatcher:
         global_objects = list(self.global_objects.values())
 
         # Check for two stages threshold
-        # Stage 1: Confidence ReID
-        if isinstance(self.reid_threshold, tuple):
-            reid_distances = self._compute_reid_distances(
-                unmatched_locals, global_objects
-            )
-            cost_matrix = reid_distances / self.reid_threshold[0]
-            cost_matrix[reid_distances > self.reid_threshold[0]] = self.INVALID_COST
-        else:
-            pos_distances, reid_distances = self._calculate_distances(
-                unmatched_locals, global_objects
-            )
-            cost_matrix = self._compute_cost_matrix(
-                pos_distances,
-                reid_distances,
-                self.pos_threshold,
-                self.reid_threshold,
-                self.pos_weight,
-                self.reid_weight,
-            )
+        # Stage 1: Normal Matching
+        pos_distances, reid_distances = self._calculate_distances(
+            unmatched_locals, global_objects
+        )
+        cost_matrix = self._compute_cost_matrix(
+            pos_distances,
+            reid_distances,
+            self.pos_threshold,
+            max(self.reid_threshold)
+            if isinstance(self.reid_threshold, tuple)
+            else self.reid_threshold,
+            self.pos_weight,
+            self.reid_weight,
+        )
 
         matched_local_indices = self._process_matches(
             camera_id, unmatched_locals, global_objects, cost_matrix
         )
 
-        # Stage 2: Lower confidence ReID with position
+        # Stage 2: High Confidence ReID
         unmatched_locals = [
             local_obj
             for i, local_obj in enumerate(unmatched_locals)
@@ -224,18 +219,12 @@ class GlobalMatcher:
         ]
 
         if isinstance(self.reid_threshold, tuple) and unmatched_locals:
-            pos_distances, reid_distances = self._calculate_distances(
-                unmatched_locals,
-                global_objects,
+            reid_distances = self._compute_reid_distances(
+                unmatched_locals, global_objects
             )
-            cost_matrix = self._compute_cost_matrix(
-                pos_distances,
-                reid_distances,
-                self.pos_threshold,
-                self.reid_threshold[1],
-                self.pos_weight,
-                self.reid_weight,
-            )
+            reid_threshold = min(self.reid_threshold)
+            cost_matrix = reid_distances / reid_threshold
+            cost_matrix[reid_distances > reid_threshold] = self.INVALID_COST
             matched_local_indices = self._process_matches(
                 camera_id, unmatched_locals, global_objects, cost_matrix
             )
