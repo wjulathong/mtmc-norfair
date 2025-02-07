@@ -47,29 +47,49 @@ class GlobalObject:
             local_obj.is_active() for local_obj in self.cameras.values()
         )
 
-    def update(self, current_time: int):
+    def update(self, current_time: int, pos_threshold: float):
         if all(local_obj.is_dead(current_time) for local_obj in self.cameras.values()):
             if current_time - self.last_frame_time >= 1800:  # TODO: To be configurable
                 self.staled = True
             return
         else:
             self.last_frame_time = current_time
-            self.update_position()
+            self.update_position(pos_threshold)
 
-    def update_position(self):
+    def update_position(self, pos_threshold: float):
         positions = np.array([obj.projected_position for obj in self.cameras.values()])
 
-        if positions.shape[0] == 1:
-            self.position = positions[0]
+        if positions.shape[0] == 0:
             return
 
-        hit_counters = np.array(
-            [obj.tracked_object.hit_counter for obj in self.cameras.values()]
+        if positions.shape[0] == 1:
+            new_measurement = positions[0]
+        else:
+            hit_counters = np.array(
+                [obj.tracked_object.hit_counter for obj in self.cameras.values()]
+            )
+            base_position = (
+                np.median(positions, axis=0) if self.position is None else self.position
+            )
+            distances = cdist(base_position[None, :], positions, metric="euclidean")[0]
+            valid_mask = distances < pos_threshold
+            filtered_positions = (
+                positions[valid_mask] if valid_mask.any() else positions
+            )
+            filtered_hit_counters = (
+                hit_counters[valid_mask] if valid_mask.any() else hit_counters
+            )
+
+            weights = np.exp(0.5 * filtered_hit_counters)
+            norm_weights = weights / np.sum(weights)
+            new_measurement = np.sum(filtered_positions * norm_weights[:, None], axis=0)
+
+        alpha = 0.3
+        self.position = (
+            new_measurement
+            if self.position is None
+            else alpha * new_measurement + (1 - alpha) * self.position
         )
-        weights = np.exp(0.5 * hit_counters)
-        norm_weights = weights / np.sum(weights)
-        position = np.sum(positions * norm_weights[:, None], axis=0)
-        self.position = position
 
     def get_embeddings(self, reid_model: PersonRecognizer):
         embeddings = []
@@ -158,7 +178,7 @@ class GlobalMatcher:
         self._match_camera(camera_id, current_time, local_objects)
 
         for global_obj in self.global_objects.values():
-            global_obj.update(current_time)
+            global_obj.update(current_time, self.pos_threshold)
 
         staled_objs = [
             global_obj.id
