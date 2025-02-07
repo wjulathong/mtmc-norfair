@@ -17,7 +17,7 @@ from utils.drawing import (
     debug_detections,
     draw_text_on_frame,
     preview_frame,
-    resize_fixed_height,
+    resize_fixed_dimensions,
 )
 from utils.global_association import GlobalMatcher
 from utils.processing import Detector, PersonRecognizer, PersonTracker
@@ -84,16 +84,16 @@ def main() -> None:
     scaled_floor_plan, transform_matrix = prepare_floor_plan(floor_plan, 1.5)
 
     video_paths = [
-        # Path("../mdx/Building_K_Cam1.mp4"),
+        Path("../mdx/Building_K_Cam1.mp4"),
         Path("../mdx/Building_K_Cam2.mp4"),
-        # Path("../mdx/Building_K_Cam6.mp4"),
-        # Path("../mdx/Building_K_Cam7.mp4"),
+        Path("../mdx/Building_K_Cam6.mp4"),
+        Path("../mdx/Building_K_Cam7.mp4"),
     ]
     calibrated_paths = [
-        # Path("./calibrated/Cam1.json"),
+        Path("./calibrated/Cam1.json"),
         Path("./calibrated/Cam2.json"),
-        # Path("./calibrated/Cam6.json"),
-        # Path("./calibrated/Cam7.json"),
+        Path("./calibrated/Cam6.json"),
+        Path("./calibrated/Cam7.json"),
     ]
     for path in video_paths:
         assert path.exists()
@@ -113,7 +113,7 @@ def main() -> None:
         PersonTracker(
             "euclidean",
             rec,
-            hit_counter_max=0,
+            hit_counter_max=5,
             distance_threshold=40.0,
             reid_distance_threshold=0.45,
             reid_hit_counter_max=50,
@@ -178,18 +178,6 @@ def main() -> None:
 
             manual = False
 
-        all_imgs = []
-        for t_obj in trks[0].tracker.tracked_objects:
-            if t_obj.id is None:
-                continue
-            imgs = [t_obj.last_detection.data["cropped"]]
-            imgs.extend([pd.data["cropped"] for pd in t_obj.past_detections])
-            all_imgs.append((t_obj.id, debug_detections(imgs)))
-        if all_imgs:
-            cv2.imshow(
-                f"croppeds_{0}", resize_fixed_height(debug_camera(all_imgs), 960)
-            )
-
         fps.update()
         if not paused:
             print(f"FPS: {fps.fps:.2f}")
@@ -226,31 +214,40 @@ def main() -> None:
                 idx = get_input("Select CameraID: ", int)
                 all_imgs = []
                 for t_obj in trks[idx].tracker.tracked_objects:
+                    if t_obj.id is None:
+                        continue
                     imgs = [t_obj.last_detection.data["cropped"]]
                     imgs.extend([pd.data["cropped"] for pd in t_obj.past_detections])
                     all_imgs.append((t_obj.id, debug_detections(imgs)))
-                cv2.imshow(f"croppeds_{idx}", debug_camera(all_imgs))
+                if all_imgs:
+                    cv2.imshow(
+                        f"croppeds_{idx}",
+                        resize_fixed_dimensions(debug_camera(all_imgs), (1280, 960)),
+                    )
             except Exception as e:
-                print(e)
+                print(f"Exception: {e}")
         elif key_press == ord("s"):
             try:
-                indices = get_input("Select (GlobalID CameraID): ", tuple[int, int])
+                gid, cid = get_input("Select (GlobalID CameraID): ", tuple[int, int])
                 imgs = [
-                    global_matcher.global_objects[indices[0]]
-                    .cameras[indices[1]]
+                    global_matcher.global_objects[gid]
+                    .cameras[cid]
                     .tracked_object.last_detection.data["cropped"]
                 ]
                 imgs.extend(
                     [
                         pd.data["cropped"]
-                        for pd in global_matcher.global_objects[indices[0]]
-                        .cameras[indices[1]]
+                        for pd in global_matcher.global_objects[gid]
+                        .cameras[cid]
                         .tracked_object.past_detections
                     ]
                 )
-                cv2.imshow("cropped", debug_detections(imgs))
+                cv2.imshow(
+                    "cropped",
+                    resize_fixed_dimensions(debug_detections(imgs), (1280, 960)),
+                )
             except Exception as e:
-                print(e)
+                print(f"Exception: {e}")
         elif key_press == ord("l"):
             for cap in caps:
                 cap.seek_forward(10)

@@ -17,55 +17,62 @@ def preview_frame(frame: MatLike, sf: float) -> MatLike:
     return cv2.resize(frame, dsize=None, fx=sf, fy=sf, interpolation=cv2.INTER_AREA)
 
 
+def resize_fixed_width(img: MatLike, fixed_width: int):
+    height, width = img.shape[:2]
+    scale = fixed_width / width
+    new_height = int(height * scale)
+    return cv2.resize(img, (fixed_width, new_height), interpolation=cv2.INTER_AREA)
+
+
 def resize_fixed_height(img: MatLike, fixed_height: int):
-    aspect_ratio = img.shape[0] / img.shape[1]
-    new_width = int(fixed_height / aspect_ratio)
+    height, width = img.shape[:2]
+    scale = fixed_height / height
+    new_width = int(width * scale)
     return cv2.resize(img, (new_width, fixed_height), interpolation=cv2.INTER_AREA)
 
 
+def resize_fixed_dimensions(img: MatLike, shape: tuple[int, int]):
+    ori_shape = np.array(img.shape[:2])
+    target_shape = np.array(shape)[::-1]
+    scale = np.min(target_shape / ori_shape)
+    new_shape = tuple((ori_shape * scale)[::-1].astype(int))
+    return cv2.resize(img, new_shape, interpolation=cv2.INTER_AREA)
+
+
 def debug_detections(cropped_images: list[MatLike]) -> MatLike:
-    final_image: MatLike | None = None
-    for i, img in enumerate(cropped_images):
-        img = draw_text_on_frame(img.copy(), f"{i}", "top-left", font_scale=0.5)
-        if final_image is None:
-            final_image = img
-        else:
-            scale = final_image.shape[0] / img.shape[0]
-            final_image = cv2.hconcat(
-                (
-                    final_image,
-                    cv2.resize(img, (int(img.shape[1] * scale), final_image.shape[0])),
-                )
-            )
-    return final_image
+    target_height = max(img.shape[0] for img in cropped_images)
+    min_width = min(img.shape[1] for img in cropped_images)
+    font_scale = 1.0 * (min_width / 150)
+    thickness = max(2, int(font_scale * 4))
+    resized_imgs = [
+        draw_text_on_frame(
+            resize_fixed_height(img, target_height),
+            f"{i}",
+            "top-left",
+            font_scale=font_scale,
+            thickness=thickness,
+        )
+        for i, img in enumerate(cropped_images)
+    ]
+    return cv2.hconcat(resized_imgs)
 
 
 def debug_camera(imgs: list[tuple[int, MatLike]]) -> MatLike:
-    final_image: MatLike | None = None
-    for i, img in imgs:
-        img = draw_text_on_frame(
-            img.copy(), f"{i}", "bottom-right", font_scale=0.8, color=(0, 255, 0)
+    target_width = max(img.shape[1] for _, img in imgs)
+    font_scale = 1.0 * (target_width / 1000)
+    thickness = max(2, int(font_scale * 4))
+    resized_imgs = [
+        draw_text_on_frame(
+            resize_fixed_width(img, target_width),
+            f"{i}",
+            "bottom-right",
+            font_scale=font_scale,
+            color=(0, 255, 0),
+            thickness=thickness,
         )
-        if final_image is None:
-            final_image = img
-        else:
-            shapes = np.array((final_image.shape[:2], img.shape[:2]))
-            target_width = np.max(shapes[:, 1])
-            scales = target_width / shapes[:, 1]
-            new_shapes = np.stack(
-                (
-                    np.repeat([target_width], 2),
-                    (shapes[:, 0] * scales).astype(int),
-                ),
-                axis=1,
-            )
-            final_image = cv2.vconcat(
-                (
-                    cv2.resize(final_image, tuple(new_shapes[0])),
-                    cv2.resize(img, tuple(new_shapes[1])),
-                )
-            )
-    return final_image
+        for i, img in imgs
+    ]
+    return cv2.vconcat(resized_imgs)
 
 
 def draw_text_on_frame(
